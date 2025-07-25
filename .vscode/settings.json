@@ -1,0 +1,17 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.espIdfPathWin": "d:\\Ruben\\esp-idf\\v5.4\\esp-idf",
+  "idf.pythonInstallPath": "C:\\Users\\tioru\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
+  "idf.openOcdConfigs": [
+    "interface/ftdi/esp32_devkitj_v1.cfg",
+    "target/esp32s3.cfg"
+  ],
+  "idf.portWin": "COM4",
+  "idf.toolsPathWin": "C:\\\\Users\\\\tioru\\\\.espressif",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32s3"
+  },
+  "files.associations": {
+    "touch.h": "c"
+  }
+}
