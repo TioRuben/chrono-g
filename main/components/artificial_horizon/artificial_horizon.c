@@ -138,9 +138,17 @@ static void ekf_predict(ekf_state_t *ekf, float gx, float gy, float dt)
 static void ekf_update(ekf_state_t *ekf, float ax, float ay, float az)
 {
     // Calculate pitch and roll from accelerometer (measurement model h(x))
-    // Using atan2f for robust angle calculation from acceleration vectors.
-    float pitch_m = atan2f(ax, sqrtf(ay * ay + az * az)); // Pitch from accel
-    float roll_m = atan2f(-ay, -az);                      // Roll from accel
+    // Rotated 90 degrees clockwise:
+    // - Roll from Z axis, with 90-degree offset (subtract π/2 from the angle)
+    // - Pitch from Y axis
+    float roll_m = atan2f(az, ax) - (M_PI / 2.0f); // Roll from accel (Z axis), shifted by 90°
+    float pitch_m = atan2f(-ay, -az);              // Pitch from accel (Y axis)
+
+    // Wrap roll angle to [-π, π]
+    if (roll_m > M_PI)
+        roll_m -= 2.0f * M_PI;
+    if (roll_m < -M_PI)
+        roll_m += 2.0f * M_PI;
 
     // Measurement vector z
     float z[2] = {pitch_m, roll_m};
@@ -296,9 +304,10 @@ static void imu_ekf_task(void *arg)
         {
             if (qmi8658_read_sensor_data(imu_dev, &data) == ESP_OK)
             {
-                // Perform EKF prediction and update
-                // Use the actual dt measured
-                ekf_predict(&ah_state.ekf, data.gyroX, data.gyroY, dt_actual);
+                // For 90-degree clockwise rotation:
+                // - Roll still uses gyroZ but needs to be negated due to the rotation
+                // - Pitch still uses gyroY
+                ekf_predict(&ah_state.ekf, -data.gyroZ, data.gyroY, dt_actual);
                 ekf_update(&ah_state.ekf, data.accelX, data.accelY, data.accelZ);
 
                 // Send updated angles to LVGL task
