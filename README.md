@@ -22,16 +22,21 @@ This project creates an interactive round display interface with three main page
 
 - **Touch Navigation:** Horizontal swiping between pages using LVGL Tileview
 - **Dual Independent Stopwatches:** Two separate timing functions with different themes
-- **Artificial Horizon:** Real-time attitude display using filtered accelerometer data
-- **Extended Kalman Filter (EKF):** Advanced filtering for accurate and responsive horizon display
+- **Artificial Horizon:** Real-time attitude display using ESP-DSP Extended Kalman Filter for optimal accuracy
+- **Advanced Sensor Fusion:** ESP-DSP library implementation with optimized filtering parameters
+- **G-Force Monitoring:** Real-time load factor calculation with color-coded warnings and click-to-reset max G tracking
+- **Performance Optimized:** Motion threshold-based updates (1° sensitivity), adaptive task scheduling, and ~60 FPS rendering
+- **Clean Code Architecture:** Modular design with eliminated code duplications, optimized includes, and improved memory efficiency
+- **Robust Error Handling:** Comprehensive error checking and graceful failure recovery
 
 ## Software Dependencies
 
 This project uses the ESP-IDF framework with the following components from the ESP-IDF Component Registry:
 
-- **LVGL Graphics Library:** `lvgl/lvgl` (v9.3.0) - GUI framework
-- **QMI8658 Driver:** `waveshare/qmi8658` (v1.0.1) - IMU sensor driver
+- **LVGL Graphics Library:** `lvgl/lvgl` (v9.3.0) - GUI framework for all display elements
+- **QMI8658 Driver:** `waveshare/qmi8658` (v1.0.1) - IMU sensor driver for accelerometer/gyroscope data
 - **Board Support Package:** `waveshare/esp32_s3_touch_amoled_1_75` (v1.0.1) - Display and touch drivers
+- **ESP-DSP Library:** Provides optimized Extended Kalman Filter implementation for sensor fusion
 
 ## Project Structure
 
@@ -91,9 +96,11 @@ This project uses the ESP-IDF framework with the following components from the E
 ## Development Notes
 
 - **Modular Design:** Each display page is implemented as a separate component for maintainability
-- **Real-time Performance:** Optimized for smooth 60fps display updates and responsive touch input
-- **Memory Efficiency:** Careful resource management for embedded environment constraints
-- **Error Handling:** Robust error handling for sensor readings and display operations
+- **Real-time Performance:** Optimized for smooth ~60fps display updates with 1° motion sensitivity
+- **Memory Efficiency:** Careful resource management with optimized includes and eliminated code duplication
+- **Code Quality:** Regular cleanup removing unused dependencies, duplicate definitions, and dead code
+- **ESP-DSP Integration:** Leverages ESP-IDF's optimized mathematical libraries for sensor fusion
+- **Error Handling:** Robust error handling for sensor readings, display operations, and memory management
 
 ## License
 

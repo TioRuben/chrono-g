@@ -4,17 +4,38 @@ This document provides specific guidelines for developing and maintaining the ar
 
 -----
 
-## Component Overview
+## C### Common Issues and Solutions
+
+### Code Quality Issues
+- **Problem:** Duplicate definitions or unused includes
+- **Solution:** Regular code cleanup to remove duplications, unused headers, and commented-out code
+
+### Display Artifacts
+- **Problem:** Flickering during updates
+- **Solution:** Use `bsp_display_lock(0)` and `bsp_display_unlock()` around multi-object operations
+
+### Performance Issues
+- **Problem:** Slow response or dropped frames
+- **Solution:** Verify motion threshold settings (1° for good responsiveness) and task priorities
+
+### Angle Accuracy
+- **Problem:** Drift or incorrect readings
+- **Solution:** Tune ESP-DSP EKF parameters (`PROCESS_NOISE_Q`, `ACCEL_NOISE_VARIANCE`, etc.)
+
+### Memory Leaks
+- **Problem:** Increasing memory usage over time
+- **Solution:** Ensure proper cleanup in `artificial_horizon_deinit()` and verify all includes are necessary
 
 The artificial horizon component provides a real-time graphical representation of aircraft attitude using accelerometer and gyroscope data from the QMI8658 sensor. It implements an Extended Kalman Filter (EKF) for accurate angle estimation and displays the horizon using LVGL graphics.
 
 ### Key Features
 
 - **Real-time Attitude Display:** Shows pitch and roll angles using a moving brown ground rectangle against a blue sky background
-- **Extended Kalman Filter:** Provides accurate angle estimation by fusing accelerometer and gyroscope data
-- **G-Force Monitoring:** Displays current and maximum G-force with color-coded warnings
+- **ESP-DSP Extended Kalman Filter:** Uses ESP-IDF's optimized ESP-DSP library for accurate angle estimation by fusing accelerometer and gyroscope data
+- **G-Force Monitoring:** Displays current and maximum G-force with color-coded warnings and click-to-reset functionality
 - **Performance Optimization:** Adaptive update rates based on visibility and motion thresholds
 - **Aircraft Reference Symbol:** Yellow inverted-T symbol representing the aircraft's position
+- **Code Quality:** Clean, optimized codebase with no duplications or unused dependencies
 
 -----
 
@@ -29,9 +50,24 @@ The artificial horizon component provides a real-time graphical representation o
 
 ### Coordinate System Mapping
 ```c
-// EKF to Display Mapping (corrected for aircraft instrument panel)
-display_roll = ekf_pitch;   // Banking left/right
-display_pitch = ekf_roll;   // Nose up/down
+// Sensor to EKF axis mapping (corrected for ESP-DSP implementation)
+float gyro_data[3] = {
+    filtered_data.gyro_x,     // X-axis: roll gyro
+    -filtered_data.gyro_z,    // Y-axis: pitch gyro (negated)
+    filtered_data.gyro_y      // Z-axis: yaw gyro
+};
+
+float accel_data[3] = {
+    filtered_data.accel_x,    // X-axis: roll accel
+    -filtered_data.accel_z,   // Y-axis: pitch accel (negated)
+    filtered_data.accel_y     // Z-axis: vertical accel
+};
+
+// EKF output to display mapping
+estimated_angles_t angles = {
+    .pitch = ekf_pitch,       // Nose up/down
+    .roll = -ekf_roll         // Banking left/right (negated)
+};
 ```
 
 -----
@@ -46,37 +82,54 @@ display_pitch = ekf_roll;   // Nose up/down
 ### State Management
 ```c
 static struct {
-    lv_obj_t *container;           // Main LVGL container
-    lv_obj_t *brown_square;        // Ground representation
-    lv_obj_t *aircraft_line_h;     // Aircraft horizontal line
-    lv_obj_t *aircraft_line_v;     // Aircraft vertical line
-    qmi8658_dev_t *imu_dev;        // IMU device handle
-    ekf_state_t ekf;               // EKF state
-    // ... additional state variables
-} ah_state;
+    lv_obj_t *container;              // Main LVGL container
+    lv_obj_t *brown_square;           // Ground representation
+    lv_obj_t *aircraft_line_h;        // Aircraft horizontal line
+    lv_obj_t *aircraft_line_v;        // Aircraft vertical line
+    lv_timer_t *display_update_timer; // LVGL display timer
+    qmi8658_dev_t *imu_dev;           // IMU device handle
+    ekf_wrapper_t *ekf_wrapper;       // ESP-DSP EKF wrapper
+    QueueHandle_t angle_queue;        // FreeRTOS queue for angle data
+    TaskHandle_t imu_ekf_task_handle; // IMU/EKF task handle
+    estimated_angles_t last_angles;   // Last known angles for threshold checking
+    filtered_data_t filtered_data;    // Filtered sensor data
+    bool is_visible;                  // Visibility state for optimization
+    int container_width, container_height; // Container dimensions
+    struct {
+        float current_g, max_g;       // G-force tracking
+        lv_obj_t *button, *label;     // G-force display UI elements
+    } g_data;
+} ah_state = {0};
 ```
 
 -----
 
-## Extended Kalman Filter Implementation
+## ESP-DSP Extended Kalman Filter Implementation
 
-### EKF Parameters (Tuned for Real-time Performance)
+### EKF Parameters (Optimized for ESP-DSP Library)
 ```c
-#define Q_angle 0.005f      // Process noise for angles
-#define Q_bias 0.0005f      // Process noise for gyro bias
-#define R_measure 0.05f     // Measurement noise (accelerometer)
+// Sensor noise parameters for ESP-DSP EKF
+#define PROCESS_NOISE_Q 0.001f      // Process noise for gyroscope integration (rad/s)²
+#define ACCEL_NOISE_VARIANCE 0.01f  // Accelerometer measurement noise (m/s²)²
+#define GYRO_NOISE_VARIANCE 0.001f  // Gyroscope measurement noise (rad/s)²
+#define MAGN_NOISE_VARIANCE 0.1f    // Magnetometer measurement noise (µT)²
+
+// Low-pass filter parameters for sensor data smoothing
+#define ACCEL_FILTER_ALPHA 0.3f     // Accelerometer filter (0.1-0.8)
+#define GYRO_FILTER_ALPHA 0.85f     // Gyroscope filter (0.7-0.95)
 ```
 
-### State Vector
-- `pitch`: Pitch angle in radians
-- `roll`: Roll angle in radians  
-- `bias_gx`: Gyroscope X-axis bias
-- `bias_gy`: Gyroscope Y-axis bias
+### ESP-DSP Integration
+- **Library:** Uses ESP-IDF's optimized ESP-DSP library for mathematical operations
+- **Wrapper:** Custom `ekf_wrapper_t` provides simplified interface to ESP-DSP EKF functions
+- **Initialization:** EKF wrapper handles state initialization and parameter setup
+- **Processing:** Separate prediction and update steps for optimal performance
 
 ### Performance Optimizations
-- **Motion Threshold:** Only updates display when motion exceeds 2° threshold
+- **Motion Threshold:** Only updates display when motion exceeds 1.0° threshold (reduced from 2°)
 - **Adaptive Sampling:** 20ms updates when visible, 100ms when hidden
-- **Low-pass Filtering:** Separate filter constants for accelerometer (α=0.15) and gyroscope (α=0.8)
+- **Low-pass Filtering:** Dual-stage filtering with separate constants for accelerometer and gyroscope
+- **Queue Management:** Single-element overwrite queue prevents data backup
 
 -----
 
@@ -104,14 +157,17 @@ lv_obj_set_style_transform_angle(brown_square, roll_decidegrees, 0);
 
 ### Code Style Conventions
 - **Function Naming:** Use `artificial_horizon_` prefix for public functions
-- **Static Functions:** Use descriptive names with `_` prefix for internal helpers
-- **Constants:** Use `#define` with descriptive names and comments
+- **Static Functions:** Use descriptive names for internal helpers
+- **Constants:** Use `#define` with descriptive names and comprehensive comments
 - **Error Handling:** Always check return values and log errors appropriately
+- **Code Cleanliness:** Avoid duplicate definitions, unused includes, and commented-out code
+- **Include Optimization:** Only include headers that are actually used in the code
 
 ### Memory Management
-- **Stack Size:** IMU/EKF task uses 8KB stack (2048 * 4)
-- **Queue Size:** Single-element queue for angle data (latest value only)
+- **Stack Size:** IMU/EKF task uses 8KB stack (2048 * 4) - optimized size
+- **Queue Size:** Single-element overwrite queue for angle data (latest value only)
 - **LVGL Objects:** Parent-child relationship ensures proper cleanup
+- **Include Minimization:** Removed unused includes (`freertos/semphr.h`, `<string.h>`) to reduce memory footprint
 
 ### Performance Considerations
 - **Display Locking:** Use `bsp_display_lock(0)` during multi-object updates
@@ -133,8 +189,8 @@ if (function_call() != ESP_OK) {
 
 ### Timing Constants
 ```c
-#define DISPLAY_REFRESH_PERIOD_MS 40    // 25 FPS display updates
-#define MOTION_THRESHOLD (2.0f * M_PI / 180.0f)  // 2 degree threshold
+#define DISPLAY_REFRESH_PERIOD_MS 17           // ~60 FPS display updates (was 25 FPS)
+#define MOTION_THRESHOLD (1.0f * M_PI / 180.0f)  // 1 degree threshold (improved sensitivity)
 ```
 
 ### Color Definitions
@@ -165,9 +221,10 @@ if (function_call() != ESP_OK) {
 - Use `ESP_LOGE` for critical errors requiring attention
 
 ### Performance Metrics
-- **Target Frame Rate:** 25 FPS display updates
+- **Target Frame Rate:** ~60 FPS display updates (17ms refresh period)
 - **IMU Sample Rate:** 50 Hz when visible, 10 Hz when hidden
-- **Memory Footprint:** Monitor heap usage during operation
+- **Memory Footprint:** Optimized with removed unused includes and no duplicate definitions
+- **Motion Sensitivity:** 1° threshold for improved responsiveness
 
 -----
 

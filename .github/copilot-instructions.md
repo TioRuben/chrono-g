@@ -10,9 +10,9 @@ This project targets the **Waveshare ESP32-S3-Touch-AMOLED-1.75** development bo
 
   * **Cyan Stopwatch:** A digital stopwatch with a cyan theme.
   * **Yellow Stopwatch:** A digital stopwatch with a yellow theme.
-  * **Artificial Horizon:** A graphical representation of an artificial horizon, utilizing accelerometer data.
+  * **Artificial Horizon:** A graphical representation of an artificial horizon utilizing ESP-DSP Extended Kalman Filter for accurate sensor fusion and G-force monitoring with color-coded warnings.
 
-The project leverages two timers for the stopwatches and an accelerometer (QMI8658) for the artificial horizon.
+The project leverages two timers for the stopwatches and implements advanced sensor fusion using the ESP-DSP library for the artificial horizon.
 
 -----
 
@@ -83,20 +83,26 @@ The project is structured to ensure modularity and maintainability. Each display
 
 ### Artificial Horizon
 
-  * **QMI8658 Accelerometer:** Accelerometer data from the QMI8658 will be used as input for the artificial horizon.
-  * **Extended Kalman Filter (EKF):** The accelerometer data will be processed and filtered using an **Extended Kalman Filter (EKF)**.
-      * **Goal:** Minimize lag while prioritizing accuracy in the horizon's representation.
-      * The EKF implementation should be carefully optimized for real-time performance on the ESP32-S3.
+  * **QMI8658 IMU Sensor:** 6-axis IMU (accelerometer + gyroscope) data from the QMI8658 used for attitude determination.
+  * **ESP-DSP Extended Kalman Filter:** The sensor data is processed using ESP-IDF's optimized ESP-DSP library implementation of EKF for accurate angle estimation.
+  * **Advanced Features:** 
+      * Real-time G-force monitoring with color-coded warnings (normal/warning/danger levels)
+      * Click-to-reset maximum G tracking functionality
+      * Motion threshold optimization (1° sensitivity) for improved responsiveness
+      * Adaptive update rates based on visibility state for power efficiency
+  * **Performance Optimized:** Carefully tuned filter parameters and display refresh rates (~60 FPS) for smooth operation.
 
 -----
 
 ## Development Guidelines
 
   * **Code Style:** Adhere to standard C coding practices and ESP-IDF conventions.
+  * **Code Quality:** Maintain clean code by eliminating duplications, unused includes, and commented-out code.
   * **Modularity:** Keep functions and modules focused on a single responsibility.
   * **Resource Management:** Pay close attention to memory usage and task scheduling, especially given the embedded nature of the project.
+  * **Include Optimization:** Only include headers that are actually used to minimize memory footprint.
   * **Error Handling:** Implement robust error handling for sensor readings, display operations, and timer management.
-  * **Performance:** Optimize code for performance, particularly for the EKF and display rendering, to ensure a smooth user experience.
+  * **Performance:** Optimize code for performance, particularly for the ESP-DSP EKF and display rendering, to ensure smooth user experience at ~60 FPS.
 
 -----
 
