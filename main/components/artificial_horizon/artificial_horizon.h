@@ -13,11 +13,6 @@ extern "C"
 #include "freertos/queue.h"
 #include <math.h> // For M_PI if not already defined
 
-// Utility macro for converting radians to degrees
-#ifndef RT_RAD_TO_DEG
-#define RT_RAD_TO_DEG(x) ((x) * (180.0f / M_PI))
-#endif
-
     // Structure for filtered sensor data
     typedef struct
     {

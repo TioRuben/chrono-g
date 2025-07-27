@@ -14,14 +14,7 @@
 static const char *TAG = "Artificial Horizon";
 
 // Display and Drawing Parameters
-#define DISPLAY_REFRESH_PERIOD_MS 40 // 25 FPS refresh rate for display (33ms)
-#define CANVAS_SIZE 280              // Optimized size for internal SRAM constraints (180x180x2 = 64.8KB)
-#define CENTER_X (CANVAS_SIZE / 2)
-#define CENTER_Y (CANVAS_SIZE / 2)
-
-// Lookup table settings
-#define LUT_SIZE 256                         // Reduced size for memory optimization (256 entries = 2KB total)
-#define LUT_SCALE (LUT_SIZE / (2.0f * M_PI)) // Conversion factor from radians to table index
+#define DISPLAY_REFRESH_PERIOD_MS 40 // 25 FPS refresh rate for display
 
 // Horizon colors
 #define SKY_COLOR lv_color_hex(0x87CEEB)           // Light blue for sky
@@ -30,13 +23,12 @@ static const char *TAG = "Artificial Horizon";
 #define AIRCRAFT_LINE_COLOR lv_color_hex(0xFFFF00) // Yellow for aircraft lines
 #define REFERENCE_LINE_WIDTH 80                    // Length of the main horizontal reference line
 
-// Horizon parameters for the new approach
-#define BROWN_SQUARE_SIZE (int)(CANVAS_SIZE * 1.41421356f) // sqrt(2) * CANVAS_SIZE
-#define HORIZON_LINE_WIDTH 3                               // Width of the white horizon line
-#define G_COLOR_NORMAL lv_color_hex(0xFFFFFF)              // White for normal G (0.5-2.0G)
-#define G_COLOR_WARNING lv_color_hex(0xFFA500)             // Orange for moderate G (2.0-4.0G)
-#define G_COLOR_DANGER lv_color_hex(0xFF0000)              // Red for extreme G (>4.0G or <0.5G)
-#define G_BUTTON_BG_COLOR lv_color_hex(0x0066CC)           // Blue background for G button
+// Horizon parameters
+#define HORIZON_LINE_WIDTH 3                     // Width of the white horizon line
+#define G_COLOR_NORMAL lv_color_hex(0xFFFFFF)    // White for normal G (0.5-2.0G)
+#define G_COLOR_WARNING lv_color_hex(0xFFA500)   // Orange for moderate G (2.0-4.0G)
+#define G_COLOR_DANGER lv_color_hex(0xFF0000)    // Red for extreme G (>4.0G or <0.5G)
+#define G_BUTTON_BG_COLOR lv_color_hex(0x0066CC) // Blue background for G button
 
 // Standard gravity constant for converting m/s² to G units
 #define STANDARD_GRAVITY 9.80665f // m/s² (standard gravity)
@@ -81,66 +73,6 @@ static struct
         lv_obj_t *label;  // Label inside the button for G-force display
     } g_data;
 } ah_state = {0};
-
-// Precomputed sine and cosine lookup tables - allocated in stack memory to save heap
-static float sin_lut[LUT_SIZE];
-static float cos_lut[LUT_SIZE];
-
-// Initialize lookup tables with runtime calculation for accuracy
-static esp_err_t init_trig_lut(void)
-{
-    ESP_LOGI(TAG, "Computing trigonometric lookup tables at runtime for accuracy");
-
-    // Calculate the lookup tables with precise values
-    for (int i = 0; i < LUT_SIZE; i++)
-    {
-        float angle = (2.0f * M_PI * i) / LUT_SIZE;
-        sin_lut[i] = sinf(angle);
-        cos_lut[i] = cosf(angle);
-    }
-
-    ESP_LOGI(TAG, "Trigonometric lookup tables initialized with %d entries", LUT_SIZE);
-
-    // Log memory usage for debugging
-    ESP_LOGI(TAG, "Memory usage: Canvas buffer: %d KB, LUT tables: %d KB (stack), Total heap: %d KB",
-             (CANVAS_SIZE * CANVAS_SIZE * sizeof(lv_color_t)) / 1024,
-             (LUT_SIZE * sizeof(float) * 2) / 1024,
-             (CANVAS_SIZE * CANVAS_SIZE * sizeof(lv_color_t)) / 1024);
-
-    return ESP_OK;
-}
-
-// Fast sine lookup (input in radians)
-static inline float fast_sin(float angle)
-{
-    // Normalize angle to [0, 2π)
-    while (angle < 0)
-        angle += 2.0f * M_PI;
-    while (angle >= 2.0f * M_PI)
-        angle -= 2.0f * M_PI;
-
-    // Convert angle to table index
-    int index = (int)(angle * LUT_SCALE);
-    index &= (LUT_SIZE - 1); // Fast modulo for power of 2
-
-    return sin_lut[index];
-}
-
-// Fast cosine lookup (input in radians)
-static inline float fast_cos(float angle)
-{
-    // Normalize angle to [0, 2π)
-    while (angle < 0)
-        angle += 2.0f * M_PI;
-    while (angle >= 2.0f * M_PI)
-        angle -= 2.0f * M_PI;
-
-    // Convert angle to table index
-    int index = (int)(angle * LUT_SCALE);
-    index &= (LUT_SIZE - 1); // Fast modulo for power of 2
-
-    return cos_lut[index];
-}
 
 // Initialize EKF
 static void init_ekf(ekf_state_t *ekf)
@@ -512,16 +444,10 @@ static void update_horizon(estimated_angles_t angles)
     // When nose goes up (positive pitch), horizon should move down (negative offset)
     float pitch_offset_pixels = -pitch_rad * (ah_state.container_height / 2.0f);
 
-    // Set brown square position
-    // Top edge should be at container center when pitch = 0, so center the square accordingly
+    // Get brown square position for calculations
     int brown_square_y = (ah_state.container_height / 2) + (int)pitch_offset_pixels;
-    lv_area_t coords;
-    lv_obj_get_coords(ah_state.brown_square, &coords);
-    int brown_square_x = -96; // coords.x1;
+    int brown_square_x = -96; // Centered horizontally with overflow for rotation
 
-    // ESP_LOGI(TAG, "Update: pitch=%.2f, roll=%.2f, pos=(%d,%d), offset=%.1f",
-    //          pitch_rad * 180.0f / M_PI, roll_rad * 180.0f / M_PI,
-    //          brown_square_x, brown_square_y, pitch_offset_pixels);
     bsp_display_lock(0);
     // Position brown square (centered horizontally, adjusted vertically for pitch)
     lv_obj_set_pos(ah_state.brown_square, brown_square_x, brown_square_y);
@@ -534,6 +460,8 @@ static void update_horizon(estimated_angles_t angles)
     int roll_decidegrees = (int)(roll_rad * 1800.0f / M_PI);
 
     // lv_obj_set_style_transform_angle(ah_state.brown_square, roll_decidegrees, 0);
+    lv_obj_set_style_transform_angle(ah_state.brown_square, roll_decidegrees, 0);
+
     bsp_display_unlock();
 }
 
@@ -590,18 +518,6 @@ lv_obj_t *artificial_horizon_init(lv_obj_t *parent, qmi8658_dev_t *imu_dev)
     ESP_LOGI(TAG, "Free PSRAM: %d bytes", heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
     ESP_LOGI(TAG, "Largest free internal block: %d bytes", heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
 
-// Force garbage collection if available to defragment heap
-#ifdef CONFIG_HEAP_TASK_TRACKING
-    heap_caps_check_integrity_all(true);
-#endif
-
-    // Initialize trigonometric lookup tables
-    if (init_trig_lut() != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to initialize lookup tables");
-        return NULL;
-    }
-
     // Create main container with sky blue background
     lv_obj_t *container = lv_obj_create(parent);
     lv_obj_set_size(container, LV_PCT(100), LV_PCT(100));
@@ -649,9 +565,9 @@ lv_obj_t *artificial_horizon_init(lv_obj_t *parent, qmi8658_dev_t *imu_dev)
         return NULL;
     }
 
-    // Calculate brown square size based on container width (temporarily smaller for debugging)
-    int brown_square_size = ah_state.container_width * 1.4142; // Start with half size to ensure visibility
-    ESP_LOGI(TAG, "Brown square size: %d (debug size)", brown_square_size);
+    // Calculate brown square size based on container width
+    int brown_square_size = ah_state.container_width * 1.4142; // sqrt(2) for diagonal coverage
+    ESP_LOGI(TAG, "Brown square size: %d", brown_square_size);
     bsp_display_lock(0); // Lock display to prevent flickering during initialization
     // Create brown square object (ground)
     ah_state.brown_square = lv_obj_create(container);
@@ -749,8 +665,6 @@ lv_obj_t *artificial_horizon_init(lv_obj_t *parent, qmi8658_dev_t *imu_dev)
 // Function to de-initialize the artificial horizon if needed
 void artificial_horizon_deinit(void)
 {
-    // Lookup tables are now static const arrays, no need to free them
-
     if (ah_state.display_update_timer)
     {
         lv_timer_del(ah_state.display_update_timer);
