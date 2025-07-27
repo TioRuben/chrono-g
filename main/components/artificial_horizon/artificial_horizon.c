@@ -1,6 +1,6 @@
 #include "artificial_horizon.h"
 #include "esp_log.h"
-#include "esp_timer.h" // For precise time measurement in EKF task
+#include "esp_timer.h" // For precise time measurement
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
@@ -33,20 +33,82 @@ static const char *TAG = "Artificial Horizon";
 // Standard gravity constant for converting m/s² to G units
 #define STANDARD_GRAVITY 9.80665f // m/s² (standard gravity)
 
-// Motion threshold parameters (in radians)
-#define MOTION_THRESHOLD (2.0f * M_PI / 180.0f) // 0.5 degree in radians - reduced for better responsiveness
+// Motion threshold parameters (in radians) - optimized for reduced sensitivity
+#define MOTION_THRESHOLD (1.0f * M_PI / 180.0f) // Increased to 1.0 degree for less frequent updates
 #define MOTION_THRESHOLD_SQR (MOTION_THRESHOLD * MOTION_THRESHOLD)
 
-// Low-pass filter parameters
-#define ACCEL_FILTER_ALPHA 0.15f // More aggressive filtering for accelerometer (α=0.15)
-#define GYRO_FILTER_ALPHA 0.8f   // Less aggressive for gyroscope (α=0.8)
+// ============================================================================
+// FILTER TUNING PARAMETERS - Affect sensor data smoothness and responsiveness
+// ============================================================================
 
-// EKF parameters (tuned for common MPU/IMU, may need further fine-tuning)
-// Q_angle and Q_bias represent the uncertainty in the process model
-static const float Q_angle = 0.005f; // Increased slightly for more responsiveness, might need tuning
-static const float Q_bias = 0.0005f; // Reduced bias noise, less drift
-// R_measure represents the uncertainty in the accelerometer measurements
-static const float R_measure = 0.05f; // Increased slightly as accelerometers can be noisy
+// Low-pass filter parameters - Control sensor data smoothness
+// LOWER alpha = More filtering (smoother but slower response)
+// HIGHER alpha = Less filtering (faster response but more noise)
+#define ACCEL_FILTER_ALPHA 0.3f // Accelerometer filter strength (0.1-0.8)
+                                // Reduce if horizon is too jumpy from vibration
+                                // Increase if horizon response is too slow
+
+#define GYRO_FILTER_ALPHA 0.85f // Gyroscope filter strength (0.7-0.95)
+                                // Keep high to preserve gyro responsiveness
+                                // Reduce slightly if gyro noise causes jitter
+
+// ============================================================================
+// EKF TUNING PARAMETERS - Adjust these to fine-tune artificial horizon behavior
+// ============================================================================
+
+// Process noise parameters - Control how much the filter trusts the gyroscope prediction
+// LOWER values = More trust in gyroscope, slower adaptation to accelerometer
+// HIGHER values = Less trust in gyroscope, faster adaptation but more noise
+static const float Q_angle = 0.0006f; // Angle process noise (rad²) - Controls pitch/roll prediction trust
+                                      // Range: 0.0005-0.01 | Lower = smoother but slower response
+                                      // If cross-coupling persists, try REDUCING this value
+
+static const float Q_bias = 0.00005f; // Bias process noise (rad/s)² - Controls gyro bias adaptation speed
+                                      // Range: 0.00001-0.0005 | Lower = more stable bias estimation
+                                      // Increase if gyro drift is visible over time
+
+// Cross-correlation factor - Controls coupling between pitch and roll axes
+static const float Q_cross_factor = 0.001f; // Multiplier for cross-correlation terms (0.0-1.0)
+                                            // 0.0 = No cross-correlation (independent axes)
+                                            // 1.0 = Full cross-correlation
+                                            // REDUCE this if cross-coupling is too strong
+
+// Measurement noise parameter - Controls how much the filter trusts accelerometer measurements
+// LOWER values = More trust in accelerometer, faster convergence but more sensitive to vibration
+// HIGHER values = Less trust in accelerometer, slower convergence but more stable
+static const float R_measure = 0.01f; // Accelerometer measurement noise (rad²)
+                                      // Range: 0.05-0.5 | Increase if horizon is too jumpy
+                                      // Decrease if horizon response is too slow
+
+// ============================================================================
+// CROSS-COUPLING TROUBLESHOOTING GUIDE
+// ============================================================================
+//
+// PROBLEM: Pitch movements cause unwanted roll (and vice versa)
+//
+// SOLUTIONS (try in order):
+//
+// 1. REDUCE Q_cross_factor (start with 0.1, try 0.0 for completely independent axes)
+//    - This is the most direct way to reduce cross-coupling
+//
+// 2. REDUCE Q_angle (try 0.001, 0.0008, 0.0005)
+//    - Makes the filter trust gyroscope predictions more
+//    - Reduces sensitivity to accelerometer noise that can cause coupling
+//
+// 3. INCREASE R_measure (try 0.2, 0.3, 0.4)
+//    - Makes the filter trust accelerometer measurements less
+//    - Reduces the impact of accelerometer cross-axis contamination
+//
+// 4. REDUCE ACCEL_FILTER_ALPHA (try 0.2, 0.1)
+//    - More aggressive accelerometer filtering
+//    - Smooths out vibrations that can cause cross-coupling
+//
+// 5. INCREASE motion threshold (try 1.5°, 2.0°)
+//    - Reduces display updates for small movements
+//    - Can mask minor cross-coupling effects
+//
+// ADVANCED: If cross-coupling persists, check sensor mounting alignment
+// ============================================================================
 
 // Global state structure
 static struct
@@ -82,13 +144,28 @@ static void init_ekf(ekf_state_t *ekf)
     ekf->bias_gx = 0.0f;
     ekf->bias_gy = 0.0f;
 
-    // Initialize P matrix (error covariance)
-    // High initial values reflect high uncertainty
+    // Initialize P matrix (error covariance) - optimized values
+    // Lower initial values reflect better initial confidence
     for (int i = 0; i < 4; i++)
     {
         for (int j = 0; j < 4; j++)
         {
-            ekf->P[i][j] = (i == j) ? 100.0f : 0.0f; // Increased initial covariance
+            if (i == j)
+            {
+                // Different initial uncertainties for different states
+                if (i < 2)
+                {
+                    ekf->P[i][j] = 0.1f; // Lower initial uncertainty for angles (0.1 rad²)
+                }
+                else
+                {
+                    ekf->P[i][j] = 0.01f; // Very low initial uncertainty for biases (0.01 (rad/s)²)
+                }
+            }
+            else
+            {
+                ekf->P[i][j] = 0.0f; // No initial cross-correlation
+            }
         }
     }
 }
@@ -113,11 +190,13 @@ static void ekf_predict(ekf_state_t *ekf, float gx, float gy, float dt)
 
     // Process noise covariance matrix Q
     // Q represents the uncertainty added to the state by the process model
+    // Cross-correlation terms help handle coupling between pitch and roll
+    float Q_cross = Q_cross_factor * Q_angle * dt; // Configurable cross-correlation strength
     float Q[4][4] = {
-        {Q_angle * dt, 0, 0, 0}, // Q_angle scaled by dt for consistency
-        {0, Q_angle * dt, 0, 0},
-        {0, 0, Q_bias * dt, 0}, // Q_bias scaled by dt
-        {0, 0, 0, Q_bias * dt}};
+        {Q_angle * dt, Q_cross, 0, 0}, // Q_angle scaled by dt for consistency
+        {Q_cross, Q_angle * dt, 0, 0}, // Cross-correlation between pitch and roll
+        {0, 0, Q_bias * dt, 0},        // Q_bias scaled by dt
+        {0, 0, 0, Q_bias * dt}};       // Gyro bias covariance
 
     // Update P: P = F*P*F' + Q
     float P_temp[4][4]; // For F*P
