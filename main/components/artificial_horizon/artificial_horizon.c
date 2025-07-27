@@ -14,7 +14,7 @@
 static const char *TAG = "Artificial Horizon";
 
 // Display and Drawing Parameters
-#define DISPLAY_REFRESH_PERIOD_MS 40 // 25 FPS refresh rate for display
+#define DISPLAY_REFRESH_PERIOD_MS 17 // 25 FPS refresh rate for display
 
 // Horizon colors
 #define SKY_COLOR lv_color_hex(0x87CEEB)           // Light blue for sky
@@ -528,12 +528,12 @@ static void update_horizon(estimated_angles_t angles)
     int brown_square_x = -96; // Centered horizontally with overflow for rotation
 
     bsp_display_lock(0);
-    // Position brown square (centered horizontally, adjusted vertically for pitch)
+    //  Position brown square (centered horizontally, adjusted vertically for pitch)
     lv_obj_set_pos(ah_state.brown_square, brown_square_x, brown_square_y);
 
     // Set rotation around center of container
     lv_obj_set_style_transform_pivot_x(ah_state.brown_square, ah_state.container_width / 2, 0);
-    lv_obj_set_style_transform_pivot_y(ah_state.brown_square, ah_state.container_height / 2, 0);
+    lv_obj_set_style_transform_pivot_y(ah_state.brown_square, 0, 0);
 
     // Apply roll rotation (convert radians to decidegrees: rad * 180/π * 10)
     int roll_decidegrees = (int)(roll_rad * 1800.0f / M_PI);
@@ -568,7 +568,7 @@ static void display_update_timer_cb(lv_timer_t *timer)
 
     // Update G-force display (always update when visible)
     char g_text[32];
-    snprintf(g_text, sizeof(g_text), "%.1fG [%.1fG]",
+    snprintf(g_text, sizeof(g_text), "%.1fg [%.1fg]",
              ah_state.g_data.current_g, ah_state.g_data.max_g);
     lv_label_set_text(ah_state.g_data.label, g_text);
 
@@ -645,7 +645,7 @@ lv_obj_t *artificial_horizon_init(lv_obj_t *parent, qmi8658_dev_t *imu_dev)
     }
 
     // Calculate brown square size based on container width
-    int brown_square_size = ah_state.container_width * 1.4142; // sqrt(2) for diagonal coverage
+    int brown_square_size = ah_state.container_width * 2; // sqrt(2) for diagonal coverage
     ESP_LOGI(TAG, "Brown square size: %d", brown_square_size);
     bsp_display_lock(0); // Lock display to prevent flickering during initialization
     // Create brown square object (ground)
@@ -699,7 +699,7 @@ lv_obj_t *artificial_horizon_init(lv_obj_t *parent, qmi8658_dev_t *imu_dev)
     ah_state.g_data.label = lv_label_create(ah_state.g_data.button);
     lv_obj_set_style_text_font(ah_state.g_data.label, &lv_font_montserrat_38, 0);
     lv_obj_set_style_text_color(ah_state.g_data.label, G_COLOR_NORMAL, 0);
-    lv_label_set_text(ah_state.g_data.label, "1.0G [1.0G]");
+    lv_label_set_text(ah_state.g_data.label, "1.0g [1.0g]");
     lv_obj_center(ah_state.g_data.label); // Center the label in the button
     bsp_display_unlock();
 
