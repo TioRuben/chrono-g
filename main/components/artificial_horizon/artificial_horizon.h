@@ -13,6 +13,9 @@ extern "C"
 #include "freertos/queue.h"
 #include <math.h> // For M_PI if not already defined
 
+// Include C wrapper for ESP-DSP EKF
+#include "artificial_horizon_ekf_wrapper.h"
+
     // Structure for filtered sensor data
     typedef struct
     {
@@ -23,16 +26,6 @@ extern "C"
         float gyro_y;
         float gyro_z;
     } filtered_data_t;
-
-    // EKF state and parameters
-    typedef struct
-    {
-        float pitch;   // Pitch angle in radians
-        float roll;    // Roll angle in radians
-        float bias_gx; // Gyro bias X
-        float bias_gy; // Gyro bias Y
-        float P[4][4]; // Error covariance matrix
-    } ekf_state_t;
 
     // Structure to hold estimated angles from EKF task
     typedef struct
