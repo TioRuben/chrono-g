@@ -19,20 +19,40 @@
 
 static const char *TAG = "Main";
 
+// Tileview event callback for visibility optimization
+static void tileview_event_cb(lv_event_t *e)
+{
+    lv_obj_t *tileview = lv_event_get_target(e);
+    lv_obj_t *active_tile = lv_tileview_get_tile_act(tileview);
+
+    // Get tile index by checking which tile is active
+    // We can use the tile's user data or check the tile directly
+    int32_t tile_index = lv_obj_get_index(active_tile);
+
+    // Tile 2 is the artificial horizon (index 2)
+    bool horizon_visible = (tile_index == 2);
+
+    // Set visibility for artificial horizon
+    artificial_horizon_set_visible(horizon_visible);
+
+    ESP_LOGI(TAG, "Tile switched to index %d, horizon visible: %s",
+             (int)tile_index, horizon_visible ? "true" : "false");
+}
+
 void app_main(void)
 {
-    // Initialize display
+    // Initialize display with optimized buffer configuration
+    // Reduce buffer size to save memory - use smaller partial buffer instead of full framebuffer
+    // bsp_display_cfg_t disp_cfg = {
+    //     .double_buffer = false,  // Disable double buffering to save ~435KB memory
+    //     .buffer_size = 466 * 50, // Use partial rendering buffer (50 lines instead of full screen)
+    //     .lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG(),
+    //     .flags = {
+    //         .buff_dma = true,
+    //         .buff_spiram = true}};
 
-    bsp_display_cfg_t disp_cfg = {
-        .double_buffer = true,    // Use double buffering for smoother rendering
-        .buffer_size = 466 * 466, // Adjust based on your display resolution
-        .lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG(),
-        .flags = {
-            .buff_dma = true,
-            .buff_spiram = true}};
-
-    lv_display_t *disp = bsp_display_start_with_config(&disp_cfg);
-    // lv_display_t *disp = bsp_display_start();
+    // lv_display_t *disp = bsp_display_start_with_config(&disp_cfg);
+    lv_display_t *disp = bsp_display_start();
 
     // Initialize IMU
     i2c_master_bus_handle_t bus_handle = bsp_i2c_get_handle();
@@ -85,6 +105,9 @@ void app_main(void)
     cyan_stopwatch_init(cyan_tile);
     yellow_stopwatch_init(yellow_tile);
     artificial_horizon_init(horizon_tile, &dev);
+
+    // Add tileview event handler for visibility optimization
+    lv_obj_add_event_cb(tileview, tileview_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
 
     bsp_display_unlock();
 

@@ -8,12 +8,43 @@ extern "C"
 
 #include "lvgl.h"    // For lv_obj_t and LVGL types
 #include "qmi8658.h" // For qmi8658_dev_t and IMU data types
-#include <math.h>    // For M_PI if not already defined
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+#include <math.h> // For M_PI if not already defined
 
 // Utility macro for converting radians to degrees
 #ifndef RT_RAD_TO_DEG
 #define RT_RAD_TO_DEG(x) ((x) * (180.0f / M_PI))
 #endif
+
+    // Structure for filtered sensor data
+    typedef struct
+    {
+        float accel_x;
+        float accel_y;
+        float accel_z;
+        float gyro_x;
+        float gyro_y;
+        float gyro_z;
+    } filtered_data_t;
+
+    // EKF state and parameters
+    typedef struct
+    {
+        float pitch;   // Pitch angle in radians
+        float roll;    // Roll angle in radians
+        float bias_gx; // Gyro bias X
+        float bias_gy; // Gyro bias Y
+        float P[4][4]; // Error covariance matrix
+    } ekf_state_t;
+
+    // Structure to hold estimated angles from EKF task
+    typedef struct
+    {
+        float pitch;
+        float roll;
+    } estimated_angles_t;
 
     /**
      * @brief Initializes and creates the Artificial Horizon display on an LVGL parent object.
@@ -42,6 +73,23 @@ extern "C"
      * to prevent memory leaks and resource conflicts.
      */
     void artificial_horizon_deinit(void);
+
+    /**
+     * @brief Set visibility state for performance optimization.
+     *
+     * When set to false, the artificial horizon will pause display updates
+     * to improve overall system performance when the screen is not visible.
+     *
+     * @param visible True to enable updates, false to pause updates.
+     */
+    void artificial_horizon_set_visible(bool visible);
+
+    /**
+     * @brief Check if artificial horizon is currently visible.
+     *
+     * @return True if visible and updating, false if hidden.
+     */
+    bool artificial_horizon_is_visible(void);
 
 #ifdef __cplusplus
 } /* extern "C" */

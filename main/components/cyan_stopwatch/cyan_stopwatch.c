@@ -2,8 +2,6 @@
 #include "esp_log.h"
 #include "stdio.h"
 
-static const char *TAG = "Cyan Stopwatch";
-
 // Component state
 static struct
 {
@@ -31,7 +29,7 @@ static void update_stopwatch(lv_timer_t *timer)
     if (cyan_state.stopwatch_running)
     {
         cyan_state.seconds_counted++;
-        char buf[16];
+        char buf[16]; // Restored to 16 bytes to accommodate format (max 14 bytes needed + null terminator)
         format_time(buf, sizeof(buf), cyan_state.seconds_counted);
         lv_label_set_text(cyan_state.time_label, buf);
     }
@@ -42,6 +40,11 @@ static void btn_event_cb(lv_event_t *e)
 {
     lv_event_code_t code = lv_event_get_code(e);
     lv_obj_t *target = lv_event_get_target(e);
+
+    // Check if it's a click event
+    if (code != LV_EVENT_CLICKED)
+        return;
+
     if (target == cyan_state.btn)
     {
         if (!cyan_state.stopwatch_running)
