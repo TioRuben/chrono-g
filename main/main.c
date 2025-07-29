@@ -15,7 +15,6 @@
 #include "qmi8658.h"
 #include "cyan_stopwatch.h"
 #include "yellow_stopwatch.h"
-#include "artificial_horizon.h"
 
 static const char *TAG = "Main";
 
@@ -31,9 +30,6 @@ static void tileview_event_cb(lv_event_t *e)
 
     // Tile 2 is the artificial horizon (index 2)
     bool horizon_visible = (tile_index == 2);
-
-    // Set visibility for artificial horizon
-    artificial_horizon_set_visible(horizon_visible);
 
     ESP_LOGI(TAG, "Tile switched to index %d, horizon visible: %s",
              (int)tile_index, horizon_visible ? "true" : "false");
@@ -65,10 +61,10 @@ void app_main(void)
     }
 
     qmi8658_set_accel_range(&dev, QMI8658_ACCEL_RANGE_8G);
-    qmi8658_set_accel_odr(&dev, QMI8658_ACCEL_ODR_1000HZ);
+    qmi8658_set_accel_odr(&dev, QMI8658_ACCEL_ODR_125HZ);
     qmi8658_set_gyro_range(&dev, QMI8658_GYRO_RANGE_512DPS);
-    qmi8658_set_gyro_odr(&dev, QMI8658_GYRO_ODR_1000HZ);
-    qmi8658_set_accel_unit_mps2(&dev, true);
+    qmi8658_set_gyro_odr(&dev, QMI8658_GYRO_ODR_125HZ);
+    qmi8658_set_accel_unit_mg(&dev, true);
     qmi8658_set_gyro_unit_rads(&dev, true);
     qmi8658_set_display_precision(&dev, 4);
 
@@ -104,7 +100,6 @@ void app_main(void)
     // Initialize components
     cyan_stopwatch_init(cyan_tile);
     yellow_stopwatch_init(yellow_tile);
-    artificial_horizon_init(horizon_tile, &dev);
 
     // Add tileview event handler for visibility optimization
     lv_obj_add_event_cb(tileview, tileview_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
