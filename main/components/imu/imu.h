@@ -21,7 +21,7 @@ extern "C"
     } imu_calibration_status_t;
 
     /**
-     * @brief IMU data structure containing accelerometer, gyroscope and timestamp
+     * @brief IMU data structure containing accelerometer, gyroscope, quaternion and timestamp
      */
     typedef struct
     {
@@ -31,6 +31,10 @@ extern "C"
         float gyro_x;                                // Gyroscope X-axis (rad/s) - bias corrected
         float gyro_y;                                // Gyroscope Y-axis (rad/s) - bias corrected
         float gyro_z;                                // Gyroscope Z-axis (rad/s) - bias corrected
+        float quat_w;                                // Quaternion W component (scalar)
+        float quat_x;                                // Quaternion X component (vector)
+        float quat_y;                                // Quaternion Y component (vector)
+        float quat_z;                                // Quaternion Z component (vector)
         int64_t timestamp;                           // Timestamp in microseconds
         imu_calibration_status_t calibration_status; // Gyro calibration status
     } imu_data_t;

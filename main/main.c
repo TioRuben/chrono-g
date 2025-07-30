@@ -60,22 +60,6 @@ void app_main(void)
     lv_display_t *disp = bsp_display_start_with_config(&disp_cfg);
     // lv_display_t *disp = bsp_display_start();
 
-    // Create IMU data queue (single element for latest data)
-    imu_queue = xQueueCreate(1, sizeof(imu_data_t));
-    if (imu_queue == NULL)
-    {
-        ESP_LOGE(TAG, "Failed to create IMU queue");
-        vTaskDelete(NULL);
-    }
-
-    // Initialize IMU module
-    esp_err_t ret = imu_init(imu_queue);
-    if (ret != ESP_OK)
-    {
-        ESP_LOGE(TAG, "Failed to initialize IMU module (error: %d)", ret);
-        vTaskDelete(NULL);
-    }
-
     // Create and initialize dark theme
     lv_theme_t *theme = lv_theme_default_init(disp,
                                               lv_color_hex(0x1E1E1E), // Primary color (black)
@@ -114,7 +98,23 @@ void app_main(void)
 
     bsp_display_unlock();
 
-    // Main loop - read IMU data and log values every second
+    // Create IMU data queue (single element for latest data)
+    imu_queue = xQueueCreate(1, sizeof(imu_data_t));
+    if (imu_queue == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to create IMU queue");
+        vTaskDelete(NULL);
+    }
+
+    // Initialize IMU module
+    esp_err_t ret = imu_init(imu_queue);
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to initialize IMU module (error: %d)", ret);
+        vTaskDelete(NULL);
+    }
+
+    // Main loop - read IMU data and log values every 5 seconds
     imu_data_t imu_data;
     while (1)
     {
@@ -139,10 +139,11 @@ void app_main(void)
                 break;
             }
 
-            ESP_LOGI(TAG, "IMU Data - Calibration: %s | Accel: X=%.3f, Y=%.3f, Z=%.3f mg | Gyro: X=%.3f, Y=%.3f, Z=%.3f rad/s | Timestamp: %lld us",
+            ESP_LOGI(TAG, "IMU Data - Calibration: %s | Accel: X=%.3f, Y=%.3f, Z=%.3f mg | Gyro: X=%.3f, Y=%.3f, Z=%.3f rad/s | Quat: w=%.3f, x=%.3f, y=%.3f, z=%.3f | Timestamp: %lld us",
                      cal_status_str,
                      imu_data.accel_x, imu_data.accel_y, imu_data.accel_z,
                      imu_data.gyro_x, imu_data.gyro_y, imu_data.gyro_z,
+                     imu_data.quat_w, imu_data.quat_x, imu_data.quat_y, imu_data.quat_z,
                      imu_data.timestamp);
         }
         else
@@ -150,6 +151,6 @@ void app_main(void)
             ESP_LOGW(TAG, "No IMU data available in queue");
         }
 
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
 }
