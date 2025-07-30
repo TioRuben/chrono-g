@@ -1,5 +1,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "esp_check.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
@@ -12,11 +13,20 @@
 #include "bsp/esp-bsp.h"
 #include "bsp/display.h"
 #include "bsp/touch.h"
-#include "qmi8658.h"
 #include "cyan_stopwatch.h"
 #include "yellow_stopwatch.h"
+#include "imu.h"
 
 static const char *TAG = "Main";
+
+// IMU data queue (single element queue for latest data)
+static QueueHandle_t imu_queue = NULL;
+
+// Getter function to access IMU queue from other modules
+QueueHandle_t get_imu_queue(void)
+{
+    return imu_queue;
+}
 
 // Tileview event callback for visibility optimization
 static void tileview_event_cb(lv_event_t *e)
@@ -50,23 +60,21 @@ void app_main(void)
     lv_display_t *disp = bsp_display_start_with_config(&disp_cfg);
     // lv_display_t *disp = bsp_display_start();
 
-    // Initialize IMU
-    i2c_master_bus_handle_t bus_handle = bsp_i2c_get_handle();
-    qmi8658_dev_t dev;
-    esp_err_t ret = qmi8658_init(&dev, bus_handle, QMI8658_ADDRESS_HIGH);
-    if (ret != ESP_OK)
+    // Create IMU data queue (single element for latest data)
+    imu_queue = xQueueCreate(1, sizeof(imu_data_t));
+    if (imu_queue == NULL)
     {
-        ESP_LOGE(TAG, "Failed to initialize QMI8658 (error: %d)", ret);
+        ESP_LOGE(TAG, "Failed to create IMU queue");
         vTaskDelete(NULL);
     }
 
-    qmi8658_set_accel_range(&dev, QMI8658_ACCEL_RANGE_8G);
-    qmi8658_set_accel_odr(&dev, QMI8658_ACCEL_ODR_125HZ);
-    qmi8658_set_gyro_range(&dev, QMI8658_GYRO_RANGE_512DPS);
-    qmi8658_set_gyro_odr(&dev, QMI8658_GYRO_ODR_125HZ);
-    qmi8658_set_accel_unit_mg(&dev, true);
-    qmi8658_set_gyro_unit_rads(&dev, true);
-    qmi8658_set_display_precision(&dev, 4);
+    // Initialize IMU module
+    esp_err_t ret = imu_init(imu_queue);
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to initialize IMU module (error: %d)", ret);
+        vTaskDelete(NULL);
+    }
 
     // Create and initialize dark theme
     lv_theme_t *theme = lv_theme_default_init(disp,
@@ -106,9 +114,42 @@ void app_main(void)
 
     bsp_display_unlock();
 
-    // Main loop is now only for system tasks
+    // Main loop - read IMU data and log values every second
+    imu_data_t imu_data;
     while (1)
     {
+        // Try to read the latest IMU data from queue (non-blocking)
+        if (xQueueReceive(imu_queue, &imu_data, 0) == pdTRUE)
+        {
+            // Convert calibration status to readable string
+            const char *cal_status_str;
+            switch (imu_data.calibration_status)
+            {
+            case IMU_CALIBRATION_NOT_STARTED:
+                cal_status_str = "NOT_STARTED";
+                break;
+            case IMU_CALIBRATION_IN_PROGRESS:
+                cal_status_str = "IN_PROGRESS";
+                break;
+            case IMU_CALIBRATION_COMPLETED:
+                cal_status_str = "COMPLETED";
+                break;
+            default:
+                cal_status_str = "UNKNOWN";
+                break;
+            }
+
+            ESP_LOGI(TAG, "IMU Data - Calibration: %s | Accel: X=%.3f, Y=%.3f, Z=%.3f mg | Gyro: X=%.3f, Y=%.3f, Z=%.3f rad/s | Timestamp: %lld us",
+                     cal_status_str,
+                     imu_data.accel_x, imu_data.accel_y, imu_data.accel_z,
+                     imu_data.gyro_x, imu_data.gyro_y, imu_data.gyro_z,
+                     imu_data.timestamp);
+        }
+        else
+        {
+            ESP_LOGW(TAG, "No IMU data available in queue");
+        }
+
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
