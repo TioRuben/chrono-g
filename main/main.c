@@ -16,11 +16,82 @@
 #include "cyan_stopwatch.h"
 #include "yellow_stopwatch.h"
 #include "imu.h"
+#include <math.h>
 
 static const char *TAG = "Main";
 
 // IMU data queue (single element queue for latest data)
 static QueueHandle_t imu_queue = NULL;
+
+/**
+ * @brief Convert calibration status enum to readable string
+ *
+ * @param status Calibration status enum
+ * @return const char* Human-readable status string
+ */
+static const char *get_calibration_status_string(imu_calibration_status_t status)
+{
+    switch (status)
+    {
+    case IMU_CALIBRATION_NOT_STARTED:
+        return "NOT_STARTED";
+    case IMU_CALIBRATION_IN_PROGRESS:
+        return "IN_PROGRESS";
+    case IMU_CALIBRATION_COMPLETED:
+        return "COMPLETED";
+    default:
+        return "UNKNOWN";
+    }
+}
+
+/**
+ * @brief Log comprehensive IMU data including Euler angles and G-load factor
+ *
+ * @param imu_data Pointer to IMU data structure
+ */
+static void log_imu_data(const imu_data_t *imu_data)
+{
+    // Convert quaternion to Euler angles
+    imu_euler_angles_t euler = imu_quaternion_to_euler(
+        imu_data->quat_w, imu_data->quat_x, imu_data->quat_y, imu_data->quat_z);
+
+    // Calculate G-load factor
+    float g_load = imu_calculate_g_load_factor(
+        imu_data->accel_x, imu_data->accel_y, imu_data->accel_z);
+
+    // Convert radians to degrees for easier reading
+    float pitch_deg = euler.pitch * 180.0f / M_PI;
+    float yaw_deg = euler.yaw * 180.0f / M_PI;
+    float roll_deg = euler.roll * 180.0f / M_PI;
+
+    // Log calibration status and timestamp
+    ESP_LOGI(TAG, "=== IMU Data Report ===");
+    ESP_LOGI(TAG, "Calibration: %s | Timestamp: %lld us",
+             get_calibration_status_string(imu_data->calibration_status),
+             imu_data->timestamp);
+
+    // Log raw accelerometer data
+    ESP_LOGI(TAG, "Accelerometer (mg): X=%.3f, Y=%.3f, Z=%.3f",
+             imu_data->accel_x, imu_data->accel_y, imu_data->accel_z);
+
+    // Log raw gyroscope data
+    ESP_LOGI(TAG, "Gyroscope (rad/s): X=%.3f, Y=%.3f, Z=%.3f",
+             imu_data->gyro_x, imu_data->gyro_y, imu_data->gyro_z);
+
+    // Log quaternion
+    ESP_LOGI(TAG, "Quaternion: W=%.3f, X=%.3f, Y=%.3f, Z=%.3f",
+             imu_data->quat_w, imu_data->quat_x, imu_data->quat_y, imu_data->quat_z);
+
+    // Log Euler angles in both radians and degrees
+    ESP_LOGI(TAG, "Euler Angles (rad): Pitch=%.3f, Yaw=%.3f, Roll=%.3f",
+             euler.pitch, euler.yaw, euler.roll);
+    ESP_LOGI(TAG, "Euler Angles (deg): Pitch=%.1f°, Yaw=%.1f°, Roll=%.1f°",
+             pitch_deg, yaw_deg, roll_deg);
+
+    // Log G-load factor
+    ESP_LOGI(TAG, "G-Load Factor: %.2f G", g_load);
+    ESP_LOGI(TAG, "=======================");
+}
 
 // Getter function to access IMU queue from other modules
 QueueHandle_t get_imu_queue(void)
@@ -121,36 +192,14 @@ void app_main(void)
         // Try to read the latest IMU data from queue (non-blocking)
         if (xQueueReceive(imu_queue, &imu_data, 0) == pdTRUE)
         {
-            // Convert calibration status to readable string
-            const char *cal_status_str;
-            switch (imu_data.calibration_status)
-            {
-            case IMU_CALIBRATION_NOT_STARTED:
-                cal_status_str = "NOT_STARTED";
-                break;
-            case IMU_CALIBRATION_IN_PROGRESS:
-                cal_status_str = "IN_PROGRESS";
-                break;
-            case IMU_CALIBRATION_COMPLETED:
-                cal_status_str = "COMPLETED";
-                break;
-            default:
-                cal_status_str = "UNKNOWN";
-                break;
-            }
-
-            ESP_LOGI(TAG, "IMU Data - Calibration: %s | Accel: X=%.3f, Y=%.3f, Z=%.3f mg | Gyro: X=%.3f, Y=%.3f, Z=%.3f rad/s | Quat: w=%.3f, x=%.3f, y=%.3f, z=%.3f | Timestamp: %lld us",
-                     cal_status_str,
-                     imu_data.accel_x, imu_data.accel_y, imu_data.accel_z,
-                     imu_data.gyro_x, imu_data.gyro_y, imu_data.gyro_z,
-                     imu_data.quat_w, imu_data.quat_x, imu_data.quat_y, imu_data.quat_z,
-                     imu_data.timestamp);
+            // Log comprehensive IMU data using the new logging function
+            log_imu_data(&imu_data);
         }
         else
         {
             ESP_LOGW(TAG, "No IMU data available in queue");
         }
 
-        vTaskDelay(pdMS_TO_TICKS(5000));
+        vTaskDelay(pdMS_TO_TICKS(500));
     }
 }

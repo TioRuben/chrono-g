@@ -21,6 +21,16 @@ extern "C"
     } imu_calibration_status_t;
 
     /**
+     * @brief Euler angles structure containing pitch, yaw, and roll in radians
+     */
+    typedef struct
+    {
+        float pitch; // Pitch angle in radians (rotation around Y-axis)
+        float yaw;   // Yaw angle in radians (rotation around Z-axis)
+        float roll;  // Roll angle in radians (rotation around X-axis)
+    } imu_euler_angles_t;
+
+    /**
      * @brief IMU data structure containing accelerometer, gyroscope, quaternion and timestamp
      */
     typedef struct
@@ -66,6 +76,33 @@ extern "C"
      * @return imu_calibration_status_t Current calibration status
      */
     imu_calibration_status_t imu_get_calibration_status(void);
+
+    /**
+     * @brief Convert quaternion to Euler angles
+     *
+     * Converts a quaternion (w, x, y, z) to Euler angles (pitch, yaw, roll) in radians
+     * using ZYX Tait-Bryan convention
+     *
+     * @param quat_w Quaternion W component (scalar)
+     * @param quat_x Quaternion X component (vector)
+     * @param quat_y Quaternion Y component (vector)
+     * @param quat_z Quaternion Z component (vector)
+     * @return imu_euler_angles_t Euler angles in radians
+     */
+    imu_euler_angles_t imu_quaternion_to_euler(float quat_w, float quat_x, float quat_y, float quat_z);
+
+    /**
+     * @brief Calculate total G-force load factor from accelerometer readings
+     *
+     * Calculates the total G-force magnitude from X, Y, Z accelerometer readings
+     * in milli-g units, returning the load factor in G units
+     *
+     * @param accel_x_mg Accelerometer X-axis reading in milli-g
+     * @param accel_y_mg Accelerometer Y-axis reading in milli-g
+     * @param accel_z_mg Accelerometer Z-axis reading in milli-g
+     * @return float Total G-force load factor
+     */
+    float imu_calculate_g_load_factor(float accel_x_mg, float accel_y_mg, float accel_z_mg);
 
 #ifdef __cplusplus
 }

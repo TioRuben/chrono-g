@@ -1,3 +1,31 @@
+/**
+ * @file imu.c
+ * @brief IMU driver with Madgwick AHRS filter for aircraft attitude estimation
+ *
+ * This implementation uses the QMI8658 6-axis IMU with software filtering and
+ * Madgwick AHRS algorithm for accurate attitude estimation in aircraft coordinate system.
+ *
+ * Key Configurable Parameters:
+ * ===========================
+ *
+ * Madgwick Filter:
+ * - MADGWICK_BETA: Filter gain/convergence rate (0.001-1.0, recommended: 0.1)
+ * - MADGWICK_SAMPLE_FREQ: Algorithm update frequency in Hz
+ * - MADGWICK_DECIMATION: Run filter every N samples (1-16, recommended: 4)
+ *
+ * Software Filter:
+ * - FILTER_ALPHA: Low-pass filter coefficient (0.0-1.0, recommended: 0.15)
+ * - FILTER_ENABLE_ACCEL: Enable accelerometer filtering (0/1)
+ * - FILTER_ENABLE_GYRO: Enable gyroscope filtering (0/1)
+ *
+ * Performance:
+ * - IMU_BASE_FREQUENCY_HZ: Base sampling rate (125Hz)
+ * - IMU_STACK_SIZE: IMU task stack size (4096 bytes)
+ * - CALIBRATION_STACK_SIZE: Calibration task stack size (4096 bytes)
+ *
+ * Coordinate System: Aircraft (X=forward/roll, Y=right/pitch, Z=down/yaw)
+ */
+
 #include "imu.h"
 #include "qmi8658.h"
 #include "bsp/esp-bsp.h"
@@ -11,12 +39,71 @@
 static const char *TAG = "IMU";
 
 // Software low-pass filter parameters
-#define FILTER_ALPHA 0.15f // Filter coefficient (0.0 = no filtering, 1.0 = no smoothing)
+// ===================================
+// Exponential moving average filter applied before Madgwick fusion
+// Helps reduce high-frequency noise from sensors
 
-// Madgwick filter parameters
-#define MADGWICK_BETA 0.1f          // Filter gain (configurable)
-#define MADGWICK_SAMPLE_FREQ 31.25f // Effective sample frequency in Hz (125/4)
-#define MADGWICK_DECIMATION 4       // Run Madgwick every 4th sample (31.25Hz)
+#define FILTER_ALPHA 0.15f // Filter coefficient (0.0 - 1.0)
+                           // 0.0 = no new data (infinite filtering)
+                           // 1.0 = no filtering (pass-through)
+                           // Higher values = less filtering, more responsive
+                           // Lower values = more filtering, smoother but delayed
+                           // Recommended: 0.1-0.2 for most applications
+
+#define FILTER_ENABLE_ACCEL 1 // Enable accelerometer filtering (recommended)
+#define FILTER_ENABLE_GYRO 1  // Enable gyroscope filtering (recommended)
+
+// Madgwick AHRS filter parameters
+// =================================
+// The Madgwick filter uses a gradient descent algorithm to fuse gyroscope and accelerometer
+// data for accurate attitude estimation without magnetometer (6DOF mode)
+
+#define MADGWICK_BETA 0.1f // Filter gain/convergence rate (0.0 - 1.0)
+                           // Higher values = faster convergence but more noise sensitivity
+                           // Lower values = slower convergence but better noise rejection
+                           // Typical range: 0.01 - 0.3
+                           // Recommended: 0.1 for general use, 0.041 for very stable platforms
+
+#define MADGWICK_SAMPLE_FREQ 31.25f // Effective sample frequency in Hz (base_freq / decimation)
+                                    // This is the rate at which the Madgwick algorithm runs
+                                    // Must match: IMU_BASE_FREQ / MADGWICK_DECIMATION
+                                    // Higher frequencies provide better tracking but use more CPU
+
+#define MADGWICK_DECIMATION 4 // Run Madgwick every N IMU samples for performance optimization
+                              // Reduces CPU load while maintaining good attitude tracking
+                              // Range: 1-8 (1=every sample, 4=every 4th sample)
+                              // At 125Hz base: decimation=4 gives 31.25Hz Madgwick rate
+                              // Higher decimation = lower CPU usage but reduced responsiveness
+
+// Advanced Madgwick filter tuning parameters
+#define MADGWICK_GYRO_ERROR 0.0349f // Expected gyro measurement error in rad/s (2 degrees/s)
+                                    // Used internally by some Madgwick implementations
+                                    // Smaller values trust gyro more, larger values trust accel more
+
+#define MADGWICK_GYRO_DRIFT 0.0035f // Expected gyro drift error in rad/s (0.2 degrees/s)
+                                    // Accounts for slow gyro bias changes over time
+                                    // Usually 10x smaller than gyro_error
+
+// Coordinate system configuration
+#define MADGWICK_USE_AIRCRAFT_AXES 1 // Enable aircraft coordinate system (X=forward, Y=right, Z=down)
+                                     // Disable for standard NED (North-East-Down) coordinate system
+
+// Parameter validation (compile-time checks for integer parameters only)
+#if MADGWICK_DECIMATION < 1 || MADGWICK_DECIMATION > 16
+#error "MADGWICK_DECIMATION must be between 1 and 16"
+#endif
+
+// Note: Float parameter validation (MADGWICK_BETA, FILTER_ALPHA) is performed at runtime
+// MADGWICK_BETA should be between 0.001 and 1.0
+// FILTER_ALPHA should be between 0.0 and 1.0
+
+// IMU timing and performance parameters
+// =====================================
+#define IMU_BASE_FREQUENCY_HZ 125          // Base IMU sampling rate in Hz (matches QMI8658 ODR)
+#define IMU_TASK_PRIORITY_OFFSET 1         // Priority offset from configMAX_PRIORITIES (higher = more priority)
+#define IMU_STACK_SIZE 4096                // Stack size for IMU task in bytes
+#define CALIBRATION_TASK_PRIORITY_OFFSET 2 // Priority offset for calibration task (lower than IMU)
+#define CALIBRATION_STACK_SIZE 4096        // Stack size for calibration task in bytes
 
 // Gyro calibration parameters
 #define CALIBRATION_SAMPLES 2000      // Number of samples for gyro bias calibration
@@ -218,12 +305,14 @@ static float fast_inv_sqrt(float x)
 /**
  * @brief Madgwick AHRS algorithm implementation (6DOF - without magnetometer)
  *
- * @param gx Gyroscope X-axis (rad/s)
- * @param gy Gyroscope Y-axis (rad/s)
- * @param gz Gyroscope Z-axis (rad/s)
- * @param ax Accelerometer X-axis (normalized)
- * @param ay Accelerometer Y-axis (normalized)
- * @param az Accelerometer Z-axis (normalized)
+ * Aircraft coordinate system: X=forward(roll), Y=right(pitch), Z=down(yaw)
+ *
+ * @param gx Gyroscope X-axis (rad/s) - roll rate
+ * @param gy Gyroscope Y-axis (rad/s) - pitch rate
+ * @param gz Gyroscope Z-axis (rad/s) - yaw rate
+ * @param ax Accelerometer X-axis (mg) - forward acceleration
+ * @param ay Accelerometer Y-axis (mg) - right acceleration
+ * @param az Accelerometer Z-axis (mg) - down acceleration
  */
 static void madgwick_update_6dof(float gx, float gy, float gz, float ax, float ay, float az)
 {
@@ -300,6 +389,12 @@ static void madgwick_update_6dof(float gx, float gy, float gz, float ax, float a
 /**
  * @brief Initialize Madgwick filter with initial orientation from accelerometer
  *
+ * Aircraft coordinate system: X=forward(roll), Y=right(pitch), Z=down(yaw)
+ * When level and stationary:
+ * - ax ≈ 0 mg (no forward/backward tilt)
+ * - ay ≈ 0 mg (no left/right tilt)
+ * - az ≈ 1000 mg (gravity pointing down in +Z direction)
+ *
  * @param ax Accelerometer X-axis (mg)
  * @param ay Accelerometer Y-axis (mg)
  * @param az Accelerometer Z-axis (mg)
@@ -327,19 +422,21 @@ static void madgwick_init_orientation(float ax, float ay, float az)
         ay /= norm;
         az /= norm;
 
-        // Calculate initial quaternion from accelerometer (assuming device is level)
-        // This gives us the initial tilt with respect to gravity
-        float pitch = asinf(-ax);
-        float roll = atan2f(ay, az);
+        // Calculate initial quaternion from accelerometer for aircraft coordinate system
+        // Aircraft axes: X=forward(roll), Y=right(pitch), Z=down(yaw)
+        // When level: ax≈0, ay≈0, az≈1000mg (gravity pointing down)
+        float roll = atan2f(ay, az); // Roll from Y and Z accelerometer components
+        float pitch = asinf(-ax);    // Pitch from X accelerometer component (negative for nose-up positive pitch)
 
-        // Convert to quaternion (yaw = 0)
-        float cy = cosf(0 * 0.5f); // yaw/2
+        // Convert to quaternion using aviation rotation sequence: Yaw(0) -> Pitch -> Roll
+        float cy = cosf(0 * 0.5f); // yaw/2 = 0 (no initial yaw reference without magnetometer)
         float sy = sinf(0 * 0.5f);
         float cp = cosf(pitch * 0.5f);
         float sp = sinf(pitch * 0.5f);
         float cr = cosf(roll * 0.5f);
         float sr = sinf(roll * 0.5f);
 
+        // Quaternion multiplication: q = qyaw * qpitch * qroll
         madgwick_q0 = cy * cp * cr + sy * sp * sr;
         madgwick_q1 = cy * cp * sr - sy * sp * cr;
         madgwick_q2 = sy * cp * sr + cy * sp * cr;
@@ -376,13 +473,33 @@ static void apply_software_filter(imu_data_t *raw_data, imu_data_t *filtered_out
     }
 
     // Apply exponential moving average filter
-    filtered_output->accel_x = FILTER_ALPHA * raw_data->accel_x + (1.0f - FILTER_ALPHA) * filtered_output->accel_x;
-    filtered_output->accel_y = FILTER_ALPHA * raw_data->accel_y + (1.0f - FILTER_ALPHA) * filtered_output->accel_y;
-    filtered_output->accel_z = FILTER_ALPHA * raw_data->accel_z + (1.0f - FILTER_ALPHA) * filtered_output->accel_z;
+    if (FILTER_ENABLE_ACCEL)
+    {
+        filtered_output->accel_x = FILTER_ALPHA * raw_data->accel_x + (1.0f - FILTER_ALPHA) * filtered_output->accel_x;
+        filtered_output->accel_y = FILTER_ALPHA * raw_data->accel_y + (1.0f - FILTER_ALPHA) * filtered_output->accel_y;
+        filtered_output->accel_z = FILTER_ALPHA * raw_data->accel_z + (1.0f - FILTER_ALPHA) * filtered_output->accel_z;
+    }
+    else
+    {
+        // Pass-through without filtering
+        filtered_output->accel_x = raw_data->accel_x;
+        filtered_output->accel_y = raw_data->accel_y;
+        filtered_output->accel_z = raw_data->accel_z;
+    }
 
-    filtered_output->gyro_x = FILTER_ALPHA * raw_data->gyro_x + (1.0f - FILTER_ALPHA) * filtered_output->gyro_x;
-    filtered_output->gyro_y = FILTER_ALPHA * raw_data->gyro_y + (1.0f - FILTER_ALPHA) * filtered_output->gyro_y;
-    filtered_output->gyro_z = FILTER_ALPHA * raw_data->gyro_z + (1.0f - FILTER_ALPHA) * filtered_output->gyro_z;
+    if (FILTER_ENABLE_GYRO)
+    {
+        filtered_output->gyro_x = FILTER_ALPHA * raw_data->gyro_x + (1.0f - FILTER_ALPHA) * filtered_output->gyro_x;
+        filtered_output->gyro_y = FILTER_ALPHA * raw_data->gyro_y + (1.0f - FILTER_ALPHA) * filtered_output->gyro_y;
+        filtered_output->gyro_z = FILTER_ALPHA * raw_data->gyro_z + (1.0f - FILTER_ALPHA) * filtered_output->gyro_z;
+    }
+    else
+    {
+        // Pass-through without filtering
+        filtered_output->gyro_x = raw_data->gyro_x;
+        filtered_output->gyro_y = raw_data->gyro_y;
+        filtered_output->gyro_z = raw_data->gyro_z;
+    }
 
     // Apply Madgwick fusion algorithm only if calibration is completed
     if (madgwick_initialized && calibration_status == IMU_CALIBRATION_COMPLETED)
@@ -456,7 +573,7 @@ static void imu_task(void *pvParameters)
         // Add timestamp
         raw_imu_data.timestamp = esp_timer_get_time();
 
-        // Map axis (1:1 mapping for now - modify as needed)
+        // Map axis to match the expected orientation
         mapped_imu_data.accel_x = -raw_imu_data.accel_z;
         mapped_imu_data.accel_y = raw_imu_data.accel_x;
         mapped_imu_data.accel_z = raw_imu_data.accel_y;
@@ -493,6 +610,45 @@ static void imu_task(void *pvParameters)
     }
 }
 
+imu_euler_angles_t imu_quaternion_to_euler(float quat_w, float quat_x, float quat_y, float quat_z)
+{
+    imu_euler_angles_t euler;
+
+    // Convert quaternion to Euler angles using aviation convention (ZYX Tait-Bryan)
+    // Aircraft coordinate system: X=forward(roll), Y=right(pitch), Z=down(yaw)
+    // Rotation sequence: Yaw -> Pitch -> Roll
+
+    // Roll (rotation around X-axis, forward axis)
+    float sinr_cosp = 2.0f * (quat_w * quat_x + quat_y * quat_z);
+    float cosr_cosp = 1.0f - 2.0f * (quat_x * quat_x + quat_y * quat_y);
+    euler.roll = atan2f(sinr_cosp, cosr_cosp);
+
+    // Pitch (rotation around Y-axis, right axis)
+    float sinp = 2.0f * (quat_w * quat_y - quat_z * quat_x);
+    if (fabsf(sinp) >= 1.0f)
+        euler.pitch = copysignf(M_PI / 2.0f, sinp); // Use ±90 degrees if out of range
+    else
+        euler.pitch = asinf(sinp);
+
+    // Yaw (rotation around Z-axis, down axis)
+    float siny_cosp = 2.0f * (quat_w * quat_z + quat_x * quat_y);
+    float cosy_cosp = 1.0f - 2.0f * (quat_y * quat_y + quat_z * quat_z);
+    euler.yaw = atan2f(siny_cosp, cosy_cosp);
+
+    return euler;
+}
+
+float imu_calculate_g_load_factor(float accel_x_mg, float accel_y_mg, float accel_z_mg)
+{
+    // Convert milli-g to g by dividing by 1000
+    float accel_x_g = accel_x_mg / 1000.0f;
+    float accel_y_g = accel_y_mg / 1000.0f;
+    float accel_z_g = accel_z_mg / 1000.0f;
+
+    // Calculate magnitude (total G-force load factor)
+    return sqrtf(accel_x_g * accel_x_g + accel_y_g * accel_y_g + accel_z_g * accel_z_g);
+}
+
 esp_err_t imu_init(QueueHandle_t imu_queue)
 {
     if (imu_initialized)
@@ -508,6 +664,27 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
     }
 
     imu_data_queue = imu_queue;
+
+    // Runtime parameter validation
+    if (MADGWICK_BETA < 0.001f || MADGWICK_BETA > 1.0f)
+    {
+        ESP_LOGE(TAG, "Invalid MADGWICK_BETA (%.3f). Must be between 0.001 and 1.0", MADGWICK_BETA);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (FILTER_ALPHA < 0.0f || FILTER_ALPHA > 1.0f)
+    {
+        ESP_LOGE(TAG, "Invalid FILTER_ALPHA (%.3f). Must be between 0.0 and 1.0", FILTER_ALPHA);
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    // Validate that sample frequency matches decimation
+    float expected_freq = (float)IMU_BASE_FREQUENCY_HZ / (float)MADGWICK_DECIMATION;
+    if (fabsf(MADGWICK_SAMPLE_FREQ - expected_freq) > 0.1f)
+    {
+        ESP_LOGW(TAG, "MADGWICK_SAMPLE_FREQ (%.2f) doesn't match expected (%.2f). Update define!",
+                 MADGWICK_SAMPLE_FREQ, expected_freq);
+    }
 
     // Get I2C bus handle
     i2c_master_bus_handle_t bus_handle = bsp_i2c_get_handle();
@@ -564,7 +741,10 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
 
     // Initialize software filter
     filter_initialized = false;
-    ESP_LOGI(TAG, "Software low-pass filter enabled (alpha = %.2f)", FILTER_ALPHA);
+    ESP_LOGI(TAG, "Software low-pass filter: alpha=%.3f, accel=%s, gyro=%s",
+             FILTER_ALPHA,
+             FILTER_ENABLE_ACCEL ? "enabled" : "disabled",
+             FILTER_ENABLE_GYRO ? "enabled" : "disabled");
 
     // Initialize Madgwick filter state
     madgwick_q0 = 1.0f;
@@ -573,7 +753,9 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
     madgwick_q3 = 0.0f;
     madgwick_initialized = false;
     madgwick_sample_counter = 0;
-    ESP_LOGI(TAG, "Madgwick AHRS filter enabled (beta = %.2f, freq = %.1f Hz)", MADGWICK_BETA, MADGWICK_SAMPLE_FREQ);
+    ESP_LOGI(TAG, "Madgwick AHRS: beta=%.3f, freq=%.1fHz, decimation=%d",
+             MADGWICK_BETA, MADGWICK_SAMPLE_FREQ, MADGWICK_DECIMATION);
+    ESP_LOGI(TAG, "Aircraft coordinate system: X=forward(roll), Y=right(pitch), Z=down(yaw)");
 
     // Initialize calibration state
     calibration_status = IMU_CALIBRATION_NOT_STARTED;
@@ -600,9 +782,9 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
     BaseType_t cal_task_ret = xTaskCreate(
         calibration_task,
         "calibration_task",
-        4096,                     // Stack size
-        NULL,                     // Parameters
-        configMAX_PRIORITIES - 2, // Priority (lower than IMU task)
+        CALIBRATION_STACK_SIZE,                                  // Stack size from define
+        NULL,                                                    // Parameters
+        configMAX_PRIORITIES - CALIBRATION_TASK_PRIORITY_OFFSET, // Priority from define
         &calibration_task_handle);
 
     if (cal_task_ret != pdPASS)
@@ -618,9 +800,9 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
     BaseType_t task_ret = xTaskCreate(
         imu_task,
         "imu_task",
-        4096,                     // Stack size
-        NULL,                     // Parameters
-        configMAX_PRIORITIES - 1, // Priority (higher than default)
+        IMU_STACK_SIZE,                                  // Stack size from define
+        NULL,                                            // Parameters
+        configMAX_PRIORITIES - IMU_TASK_PRIORITY_OFFSET, // Priority from define
         &imu_task_handle);
 
     if (task_ret != pdPASS)
