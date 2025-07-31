@@ -59,6 +59,10 @@ static void log_imu_data(const imu_data_t *imu_data)
     float g_load = imu_calculate_g_load_factor(
         imu_data->accel_x, imu_data->accel_y, imu_data->accel_z);
 
+    // Calculate turn rate like aircraft turn indicator
+    float turn_rate = imu_calculate_turn_rate(
+        imu_data->gyro_x, imu_data->gyro_y, imu_data->gyro_z);
+
     // Convert radians to degrees for easier reading
     float pitch_deg = euler.pitch * 180.0f / M_PI;
     float yaw_deg = euler.yaw * 180.0f / M_PI;
@@ -75,7 +79,7 @@ static void log_imu_data(const imu_data_t *imu_data)
              imu_data->accel_x, imu_data->accel_y, imu_data->accel_z);
 
     // Log raw gyroscope data
-    ESP_LOGI(TAG, "Gyroscope (rad/s): X=%.3f, Y=%.3f, Z=%.3f",
+    ESP_LOGI(TAG, "Gyroscope (deg/s): X=%.3f, Y=%.3f, Z=%.3f",
              imu_data->gyro_x, imu_data->gyro_y, imu_data->gyro_z);
 
     // Log quaternion
@@ -90,6 +94,17 @@ static void log_imu_data(const imu_data_t *imu_data)
 
     // Log G-load factor
     ESP_LOGI(TAG, "G-Load Factor: %.2f G", g_load);
+
+    // Log turn rate (aircraft turn indicator style)
+    ESP_LOGI(TAG, "Turn Rate: %.1f°/s %s",
+             fabsf(turn_rate),
+             turn_rate > 0.1f ? "(Right)" : turn_rate < -0.1f ? "(Left)"
+                                                              : "(Straight)");
+    if (fabsf(turn_rate) >= 2.5f && fabsf(turn_rate) <= 3.5f)
+    {
+        ESP_LOGI(TAG, "*** STANDARD RATE TURN ***");
+    }
+
     ESP_LOGI(TAG, "=======================");
 }
 

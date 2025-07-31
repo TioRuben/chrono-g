@@ -38,9 +38,9 @@ extern "C"
         float accel_x;                               // Accelerometer X-axis (mg)
         float accel_y;                               // Accelerometer Y-axis (mg)
         float accel_z;                               // Accelerometer Z-axis (mg)
-        float gyro_x;                                // Gyroscope X-axis (rad/s) - bias corrected
-        float gyro_y;                                // Gyroscope Y-axis (rad/s) - bias corrected
-        float gyro_z;                                // Gyroscope Z-axis (rad/s) - bias corrected
+        float gyro_x;                                // Gyroscope X-axis (deg/s) - bias corrected
+        float gyro_y;                                // Gyroscope Y-axis (deg/s) - bias corrected
+        float gyro_z;                                // Gyroscope Z-axis (deg/s) - bias corrected
         float quat_w;                                // Quaternion W component (scalar)
         float quat_x;                                // Quaternion X component (vector)
         float quat_y;                                // Quaternion Y component (vector)
@@ -104,6 +104,21 @@ extern "C"
      */
     float imu_calculate_g_load_factor(float accel_x_mg, float accel_y_mg, float accel_z_mg);
 
+    /**
+     * @brief Calculate aircraft turn rate like a standard turn indicator
+     *
+     * Returns the yaw axis (Z-axis) gyroscope reading directly as the turn rate.
+     * Aircraft turn indicators display turn rate in degrees per second.
+     * Standard rate turn in aviation is 3°/s (360° turn in 2 minutes).
+     *
+     * Aircraft coordinate system: X=forward(roll), Y=right(pitch), Z=down(yaw)
+     *
+     * @param gyro_x_degs Gyroscope X-axis reading in deg/s (roll rate)
+     * @param gyro_y_degs Gyroscope Y-axis reading in deg/s (pitch rate)
+     * @param gyro_z_degs Gyroscope Z-axis reading in deg/s (yaw rate)
+     * @return float Turn rate in degrees per second (positive = right turn, negative = left turn)
+     */
+    float imu_calculate_turn_rate(float gyro_x_degs, float gyro_y_degs, float gyro_z_degs);
 #ifdef __cplusplus
 }
 #endif

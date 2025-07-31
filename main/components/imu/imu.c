@@ -78,6 +78,7 @@ static const char *TAG = "IMU";
 // Advanced Madgwick filter tuning parameters
 #define MADGWICK_GYRO_ERROR 0.0349f // Expected gyro measurement error in rad/s (2 degrees/s)
                                     // Used internally by some Madgwick implementations
+                                    // Note: Input gyro data is in deg/s but converted to rad/s internally
                                     // Smaller values trust gyro more, larger values trust accel more
 
 #define MADGWICK_GYRO_DRIFT 0.0035f // Expected gyro drift error in rad/s (0.2 degrees/s)
@@ -192,7 +193,7 @@ static void process_calibration_batch(calibration_batch_t *batch)
 
         calibration_status = IMU_CALIBRATION_COMPLETED;
         ESP_LOGI(TAG, "Gyro calibration completed!");
-        ESP_LOGI(TAG, "Gyro bias: X=%.6f, Y=%.6f, Z=%.6f rad/s",
+        ESP_LOGI(TAG, "Gyro bias: X=%.6f, Y=%.6f, Z=%.6f deg/s",
                  gyro_bias_x, gyro_bias_y, gyro_bias_z);
     }
 }
@@ -307,9 +308,9 @@ static float fast_inv_sqrt(float x)
  *
  * Aircraft coordinate system: X=forward(roll), Y=right(pitch), Z=down(yaw)
  *
- * @param gx Gyroscope X-axis (rad/s) - roll rate
- * @param gy Gyroscope Y-axis (rad/s) - pitch rate
- * @param gz Gyroscope Z-axis (rad/s) - yaw rate
+ * @param gx Gyroscope X-axis (deg/s) - roll rate (converted to rad/s internally)
+ * @param gy Gyroscope Y-axis (deg/s) - pitch rate (converted to rad/s internally)
+ * @param gz Gyroscope Z-axis (deg/s) - yaw rate (converted to rad/s internally)
  * @param ax Accelerometer X-axis (mg) - forward acceleration
  * @param ay Accelerometer Y-axis (mg) - right acceleration
  * @param az Accelerometer Z-axis (mg) - down acceleration
@@ -320,6 +321,13 @@ static void madgwick_update_6dof(float gx, float gy, float gz, float ax, float a
     float s0, s1, s2, s3;
     float qDot1, qDot2, qDot3, qDot4;
     float _2q0, _2q1, _2q2, _2q3, _4q0, _4q1, _4q2, _8q1, _8q2, q0q0, q1q1, q2q2, q3q3;
+
+    // Convert gyroscope readings from degrees/second to radians/second
+    // Madgwick algorithm expects radians/second
+    const float DEG_TO_RAD = M_PI / 180.0f;
+    gx *= DEG_TO_RAD;
+    gy *= DEG_TO_RAD;
+    gz *= DEG_TO_RAD;
 
     // Sample period
     float samplePeriod = 1.0f / MADGWICK_SAMPLE_FREQ;
@@ -510,8 +518,9 @@ static void apply_software_filter(imu_data_t *raw_data, imu_data_t *filtered_out
         {
             madgwick_sample_counter = 0;
 
-            // Madgwick expects normalized accelerometer data (mg values work directly)
-            // No unit conversion needed - Madgwick normalizes internally
+            // Madgwick expects accelerometer data in mg and gyroscope data in rad/s
+            // Accelerometer mg values work directly (Madgwick normalizes internally)
+            // Gyroscope deg/s values are converted to rad/s inside madgwick_update_6dof
             madgwick_update_6dof(filtered_output->gyro_x, filtered_output->gyro_y, filtered_output->gyro_z,
                                  filtered_output->accel_x, filtered_output->accel_y, filtered_output->accel_z);
         }
@@ -649,6 +658,16 @@ float imu_calculate_g_load_factor(float accel_x_mg, float accel_y_mg, float acce
     return sqrtf(accel_x_g * accel_x_g + accel_y_g * accel_y_g + accel_z_g * accel_z_g);
 }
 
+float imu_calculate_turn_rate(float gyro_x_degs, float gyro_y_degs, float gyro_z_degs)
+{
+    // Aircraft turn indicators display turn rate around the yaw axis (Z-axis)
+    // This represents horizontal turning (left/right turns)
+    // Aircraft coordinate system: X=forward(roll), Y=right(pitch), Z=down(yaw)
+    // Gyroscope data is already in deg/s, so return Z-axis directly
+    // Positive values indicate right turn, negative values indicate left turn
+    return gyro_z_degs;
+}
+
 esp_err_t imu_init(QueueHandle_t imu_queue)
 {
     if (imu_initialized)
@@ -734,7 +753,7 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
         return ret;
     }
 
-    qmi8658_set_gyro_unit_rads(&dev, true);
+    qmi8658_set_gyro_unit_dps(&dev, true);
 
     // Set display precision
     qmi8658_set_display_precision(&dev, 4);
