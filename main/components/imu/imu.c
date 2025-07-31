@@ -75,16 +75,6 @@ static const char *TAG = "IMU";
                               // At 125Hz base: decimation=4 gives 31.25Hz Madgwick rate
                               // Higher decimation = lower CPU usage but reduced responsiveness
 
-// Advanced Madgwick filter tuning parameters
-#define MADGWICK_GYRO_ERROR 0.0349f // Expected gyro measurement error in rad/s (2 degrees/s)
-                                    // Used internally by some Madgwick implementations
-                                    // Note: Input gyro data is in deg/s but converted to rad/s internally
-                                    // Smaller values trust gyro more, larger values trust accel more
-
-#define MADGWICK_GYRO_DRIFT 0.0035f // Expected gyro drift error in rad/s (0.2 degrees/s)
-                                    // Accounts for slow gyro bias changes over time
-                                    // Usually 10x smaller than gyro_error
-
 // Coordinate system configuration
 #define MADGWICK_USE_AIRCRAFT_AXES 1 // Enable aircraft coordinate system (X=forward, Y=right, Z=down)
                                      // Disable for standard NED (North-East-Down) coordinate system
@@ -108,7 +98,6 @@ static const char *TAG = "IMU";
 
 // Gyro calibration parameters
 #define CALIBRATION_SAMPLES 2000      // Number of samples for gyro bias calibration
-#define CALIBRATION_TIMEOUT_MS 20000  // Maximum time for calibration (20 seconds)
 #define CALIBRATION_BATCH_SIZE 500    // Process calibration in batches to reduce CPU load
 #define CALIBRATION_QUEUE_SIZE 8      // Size of calibration queue
 #define CALIBRATION_LOG_DECIMATION 25 // Log calibration progress every N batches
@@ -179,7 +168,7 @@ static void process_calibration_batch(calibration_batch_t *batch)
     calibration_log_counter++;
     if (calibration_log_counter >= CALIBRATION_LOG_DECIMATION)
     {
-        ESP_LOGI(TAG, "Calibration progress: %ld/%d samples", calibration_sample_count, CALIBRATION_SAMPLES);
+        ESP_LOGD(TAG, "Calibration progress: %ld/%d samples", calibration_sample_count, CALIBRATION_SAMPLES);
         calibration_log_counter = 0;
     }
 
@@ -193,7 +182,7 @@ static void process_calibration_batch(calibration_batch_t *batch)
 
         calibration_status = IMU_CALIBRATION_COMPLETED;
         ESP_LOGI(TAG, "Gyro calibration completed!");
-        ESP_LOGI(TAG, "Gyro bias: X=%.6f, Y=%.6f, Z=%.6f deg/s",
+        ESP_LOGD(TAG, "Gyro bias: X=%.6f, Y=%.6f, Z=%.6f deg/s",
                  gyro_bias_x, gyro_bias_y, gyro_bias_z);
     }
 }
@@ -701,7 +690,7 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
     float expected_freq = (float)IMU_BASE_FREQUENCY_HZ / (float)MADGWICK_DECIMATION;
     if (fabsf(MADGWICK_SAMPLE_FREQ - expected_freq) > 0.1f)
     {
-        ESP_LOGW(TAG, "MADGWICK_SAMPLE_FREQ (%.2f) doesn't match expected (%.2f). Update define!",
+        ESP_LOGD(TAG, "MADGWICK_SAMPLE_FREQ (%.2f) doesn't match expected (%.2f). Update define!",
                  MADGWICK_SAMPLE_FREQ, expected_freq);
     }
 
@@ -720,6 +709,7 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
     uint8_t who_am_i, revision;
     qmi8658_get_who_am_i(&dev, &who_am_i);
     qmi8658_read_register(&dev, QMI8658_REVISION, &revision, 1);
+    ESP_LOGD(TAG, "QMI8658 ID: 0x%02X, Revision: 0x%02X", who_am_i, revision);
 
     // Configure accelerometer
     ret = qmi8658_set_accel_range(&dev, QMI8658_ACCEL_RANGE_8G);
