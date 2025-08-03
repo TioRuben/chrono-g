@@ -46,16 +46,12 @@ static const char *get_calibration_status_string(imu_calibration_status_t status
 }
 
 /**
- * @brief Log comprehensive IMU data including Euler angles and G-load factor
+ * @brief Log IMU data for debugging
  *
  * @param imu_data Pointer to IMU data structure
  */
 static void log_imu_data(const imu_data_t *imu_data)
 {
-    // Convert quaternion to Euler angles
-    imu_euler_angles_t euler = imu_quaternion_to_euler(
-        imu_data->quat_w, imu_data->quat_x, imu_data->quat_y, imu_data->quat_z);
-
     // Calculate G-load factor
     float g_load = imu_calculate_g_load_factor(
         imu_data->accel_x, imu_data->accel_y, imu_data->accel_z);
@@ -63,11 +59,6 @@ static void log_imu_data(const imu_data_t *imu_data)
     // Calculate turn rate like aircraft turn indicator
     float turn_rate = imu_calculate_turn_rate(
         imu_data->gyro_x, imu_data->gyro_y, imu_data->gyro_z);
-
-    // Convert radians to degrees for easier reading
-    float pitch_deg = euler.pitch * 180.0f / M_PI;
-    float yaw_deg = euler.yaw * 180.0f / M_PI;
-    float roll_deg = euler.roll * 180.0f / M_PI;
 
     // Log calibration status and timestamp
     ESP_LOGI(TAG, "=== IMU Data Report ===");
@@ -82,16 +73,6 @@ static void log_imu_data(const imu_data_t *imu_data)
     // Log raw gyroscope data
     ESP_LOGI(TAG, "Gyroscope (deg/s): X=%.3f, Y=%.3f, Z=%.3f",
              imu_data->gyro_x, imu_data->gyro_y, imu_data->gyro_z);
-
-    // Log quaternion
-    ESP_LOGI(TAG, "Quaternion: W=%.3f, X=%.3f, Y=%.3f, Z=%.3f",
-             imu_data->quat_w, imu_data->quat_x, imu_data->quat_y, imu_data->quat_z);
-
-    // Log Euler angles in both radians and degrees
-    ESP_LOGI(TAG, "Euler Angles (rad): Pitch=%.3f, Yaw=%.3f, Roll=%.3f",
-             euler.pitch, euler.yaw, euler.roll);
-    ESP_LOGI(TAG, "Euler Angles (deg): Pitch=%.1f°, Yaw=%.1f°, Roll=%.1f°",
-             pitch_deg, yaw_deg, roll_deg);
 
     // Log G-load factor
     ESP_LOGI(TAG, "G-Load Factor: %.2f G", g_load);

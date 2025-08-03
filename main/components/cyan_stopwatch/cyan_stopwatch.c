@@ -2,6 +2,8 @@
 #include "esp_log.h"
 #include "stdio.h"
 
+LV_FONT_DECLARE(lv_font_seven_segment_64);
+
 // Component state
 static struct
 {
@@ -128,7 +130,7 @@ lv_obj_t *cyan_stopwatch_init(lv_obj_t *parent)
 
     // Create time display label with cyan color
     cyan_state.time_label = lv_label_create(container);
-    lv_obj_set_style_text_font(cyan_state.time_label, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_font(cyan_state.time_label, &lv_font_seven_segment_64, 0);
     lv_obj_set_style_text_color(cyan_state.time_label, lv_color_hex(0x00FFFF), 0); // Cyan color
     lv_label_set_text(cyan_state.time_label, "00:00:00");
     lv_obj_align(cyan_state.time_label, LV_ALIGN_CENTER, 0, 0);

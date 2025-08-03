@@ -6,9 +6,9 @@ This document provides guidelines for developing and maintaining the IMU compone
 
 ## Component Overview
 
-This IMU component provides high-precision aircraft attitude estimation using a **QMI8658 6-axis IMU sensor** on the **Waveshare ESP32-S3-Touch-AMOLED-1.75** board. It implements:
+This IMU component provides basic sensor data processing using a **QMI8658 6-axis IMU sensor** on the **Waveshare ESP32-S3-Touch-AMOLED-1.75** board. It implements:
 
-- **Madgwick AHRS filter** for sensor fusion (6DOF - accelerometer + gyroscope)
+- **Raw sensor data processing** with optional software filtering
 - **Aircraft coordinate system** mapping for aviation applications
 - **Automatic gyroscope calibration** with bias correction
 - **Software low-pass filtering** for noise reduction
@@ -44,13 +44,12 @@ The component performs **automatic gyroscope bias calibration** on startup:
 
 ### Data Pipeline
 ```
-QMI8658 Sensor → Axis Mapping → Gyro Calibration → Low-pass Filter → Madgwick AHRS → Queue
+QMI8658 Sensor → Axis Mapping → Gyro Calibration → Low-pass Filter → Queue
 ```
 
 Output provides:
 - **Raw sensor data** (accelerometer: mg, gyroscope: deg/s)
-- **Filtered sensor data** (software low-pass filtering)
-- **Quaternion** (w, x, y, z) for attitude representation
+- **Filtered sensor data** (optional software low-pass filtering)
 - **Timestamp** (microseconds since boot)
 - **Calibration status** (not started, in progress, completed)
 
@@ -76,11 +75,11 @@ imu_data_t imu_data;
 if (xQueueReceive(imu_queue, &imu_data, pdMS_TO_TICKS(100)) == pdTRUE) {
     // Check calibration status first
     if (imu_data.calibration_status == IMU_CALIBRATION_COMPLETED) {
-        // Convert quaternion to Euler angles
-        imu_euler_angles_t euler = imu_quaternion_to_euler(
-            imu_data.quat_w, imu_data.quat_x, 
-            imu_data.quat_y, imu_data.quat_z
-        );
+        // Use raw sensor data directly
+        ESP_LOGI(TAG, "Accel: X=%.3f, Y=%.3f, Z=%.3f mg", 
+                 imu_data.accel_x, imu_data.accel_y, imu_data.accel_z);
+        ESP_LOGI(TAG, "Gyro: X=%.3f, Y=%.3f, Z=%.3f deg/s",
+                 imu_data.gyro_x, imu_data.gyro_y, imu_data.gyro_z);
         
         // Calculate G-force load factor
         float g_force = imu_calculate_g_load_factor(
@@ -117,7 +116,7 @@ switch (status) {
 
 ### Timing and Frequency
 - **Sampling Rate:** 125Hz (8ms period) - matches QMI8658 ODR
-- **Madgwick Filter:** 31.25Hz (decimation=4) for CPU optimization
+- **Software Filter:** Applied every sample (if enabled)
 - **Queue Mode:** Overwrite (always latest data, no blocking)
 
 ### Task Priorities
@@ -133,18 +132,11 @@ switch (status) {
 
 ## Key Configuration Parameters
 
-### Madgwick Filter Tuning
+### Software Filter Tuning
 ```c
-#define MADGWICK_BETA 0.1f              // Filter gain (0.001-1.0)
-#define MADGWICK_SAMPLE_FREQ 31.25f     // Update frequency (Hz)
-#define MADGWICK_DECIMATION 4           // Run every N samples
-```
-
-### Software Filter
-```c
-#define FILTER_ALPHA 0.15f              // Low-pass coefficient (0.0-1.0)
-#define FILTER_ENABLE_ACCEL 1           // Enable accel filtering
-#define FILTER_ENABLE_GYRO 1            // Enable gyro filtering
+#define FILTER_ALPHA 0.15f              // Filter coefficient (0.0-1.0)
+#define FILTER_ENABLE_ACCEL 1           // Enable accelerometer filtering
+#define FILTER_ENABLE_GYRO 1            // Enable gyroscope filtering
 ```
 
 ### Calibration Parameters
@@ -188,6 +180,6 @@ switch (status) {
 
 ## Integration Notes
 
-This component is designed for the artificial horizon display but can be used by any module requiring accurate attitude estimation. The quaternion output is preferred for attitude calculations to avoid gimbal lock issues inherent with Euler angles.
+This component is designed for basic sensor data acquisition and can be used by any module requiring raw IMU data. The component provides calibrated accelerometer and gyroscope data in aircraft coordinate system.
 
-When integrating with UI components, remember that attitude data is only valid after calibration completion. Display appropriate calibration progress indicators to users during the initial setup phase.
+When integrating with UI components, remember that sensor data is only fully calibrated after gyroscope bias calibration completion. Display appropriate calibration progress indicators to users during the initial setup phase.

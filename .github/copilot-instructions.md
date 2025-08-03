@@ -10,9 +10,9 @@ This project targets the **Waveshare ESP32-S3-Touch-AMOLED-1.75** development bo
 
   * **Cyan Stopwatch:** A digital stopwatch with a cyan theme.
   * **Yellow Stopwatch:** A digital stopwatch with a yellow theme.
-  * **Artificial Horizon:** A graphical representation of an artificial horizon utilizing ESP-DSP Extended Kalman Filter for accurate sensor fusion and G-force monitoring with color-coded warnings.
+  * **Artificial Horizon:** A graphical representation of an artificial horizon using raw IMU sensor data with G-force monitoring and color-coded warnings.
 
-The project leverages two timers for the stopwatches and implements advanced sensor fusion using the ESP-DSP library for the artificial horizon.
+The project leverages two timers for the stopwatches and implements basic IMU sensor data processing for the artificial horizon.
 
 -----
 
@@ -130,14 +130,16 @@ When creating a new tile component, follow these patterns:
 
 ### Artificial Horizon
 
-  * **QMI8658 IMU Sensor:** 6-axis IMU (accelerometer + gyroscope) data from the QMI8658 used for attitude determination.
-  * **ESP-DSP Extended Kalman Filter:** The sensor data is processed using ESP-IDF's optimized ESP-DSP library implementation of EKF for accurate angle estimation.
-  * **Advanced Features:** 
-      * Real-time G-force monitoring with color-coded warnings (normal/warning/danger levels)
-      * Click-to-reset maximum G tracking functionality
-      * Motion threshold optimization (1° sensitivity) for improved responsiveness
-      * Adaptive update rates based on visibility state for power efficiency
-  * **Performance Optimized:** Carefully tuned filter parameters and display refresh rates (~60 FPS) for smooth operation.
+  * **QMI8658 IMU Sensor:** 6-axis IMU (accelerometer + gyroscope) data from the QMI8658 used for basic sensor data acquisition.
+  * **Software Filtering:** Optional exponential moving average low-pass filtering for accelerometer and gyroscope data to reduce noise.
+  * **Raw Sensor Data:** The IMU system provides calibrated accelerometer (mg) and gyroscope (deg/s) data in aircraft coordinate system.
+  * **Basic Features:** 
+      * Real-time G-force load factor calculation from accelerometer magnitude
+      * Aircraft-style turn rate calculation from yaw axis gyroscope data
+      * Automatic gyroscope bias calibration on startup (2000 samples)
+      * Software filtering with configurable parameters (FILTER_ALPHA, enable/disable per sensor)
+  * **Aircraft Coordinate System:** X=forward(roll), Y=right(pitch), Z=down(yaw)
+  * **Performance:** Optimized for 125Hz sampling rate with batched calibration processing to avoid blocking IMU readings.
 
 -----
 
@@ -149,7 +151,7 @@ When creating a new tile component, follow these patterns:
   * **Resource Management:** Pay close attention to memory usage and task scheduling, especially given the embedded nature of the project.
   * **Include Optimization:** Only include headers that are actually used to minimize memory footprint.
   * **Error Handling:** Implement robust error handling for sensor readings, display operations, and timer management.
-  * **Performance:** Optimize code for performance, particularly for the ESP-DSP EKF and display rendering, to ensure smooth user experience at ~60 FPS.
+  * **Performance:** Optimize code for performance, particularly for display rendering and sensor data processing, to ensure smooth user experience.
   * **Visibility Optimization:** Always implement visibility control in UI components to prevent unnecessary updates when tiles are not visible, improving battery life and system performance.
 
 -----
