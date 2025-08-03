@@ -6,13 +6,14 @@ This document provides guidelines and essential information for developing on th
 
 ## Project Overview
 
-This project targets the **Waveshare ESP32-S3-Touch-AMOLED-1.75** development board. The core functionality revolves around a round display with three horizontally swipeable pages, each dedicated to a specific function:
+This project targets the **Waveshare ESP32-S3-Touch-AMOLED-1.75** development board. The core functionality revolves around a round display with four horizontally swipeable pages, each dedicated to a specific function:
 
   * **Cyan Stopwatch:** A digital stopwatch with a cyan theme.
   * **Yellow Stopwatch:** A digital stopwatch with a yellow theme.
+  * **G-Meter:** A digital G-force meter showing current, minimum, and maximum G-force values with color-coded warnings.
   * **Artificial Horizon:** A graphical representation of an artificial horizon using raw IMU sensor data with G-force monitoring and color-coded warnings.
 
-The project leverages two timers for the stopwatches and implements basic IMU sensor data processing for the artificial horizon.
+The project leverages two timers for the stopwatches and implements advanced IMU sensor data processing for both the G-meter and artificial horizon with proper aircraft-style G-force calculations.
 
 -----
 
@@ -52,8 +53,11 @@ The project is structured to ensure modularity and maintainability. Each display
 .
 ├── main/
 │   ├── main.c
+│   ├── main.h
 │   ├── visibility_manager.c
 │   ├── visibility_manager.h
+│   ├── lv_font_g_meter_96.c        # Custom font for G-meter display
+│   ├── lv_font_seven_segment_64.c  # Custom font for stopwatches
 │   ├── components/
 │   │   ├── cyan_stopwatch/
 │   │   │   ├── cyan_stopwatch.c
@@ -61,9 +65,15 @@ The project is structured to ensure modularity and maintainability. Each display
 │   │   ├── yellow_stopwatch/
 │   │   │   ├── yellow_stopwatch.c
 │   │   │   └── yellow_stopwatch.h
-│   │   └── artificial_horizon/
-│   │       ├── artificial_horizon.c
-│   │       └── artificial_horizon.h
+│   │   ├── g_meter/
+│   │   │   ├── g_meter.c
+│   │   │   └── g_meter.h
+│   │   ├── artificial_horizon/
+│   │   │   ├── artificial_horizon.c
+│   │   │   └── artificial_horizon.h
+│   │   └── imu/
+│   │       ├── imu.c
+│   │       └── imu.h
 │   └── CMakeLists.txt
 ├── CMakeLists.txt
 └── sdkconfig.defaults
@@ -75,8 +85,8 @@ The project is structured to ensure modularity and maintainability. Each display
 
 ### Display Navigation
 
-  * **LVGL Tileview:** The three display pages will be implemented as tiles within an **LVGL Tileview** object.
-  * **Horizontal Swiping:** Users will navigate between the stopwatch pages and the artificial horizon by horizontally swiping across the display. Refer to the [LVGL Tileview Documentation](https://docs.lvgl.io/master/details/widgets/tileview.html) for implementation details.
+  * **LVGL Tileview:** The four display pages are implemented as tiles within an **LVGL Tileview** object.
+  * **Horizontal Swiping:** Users navigate between the stopwatch pages, G-meter, and artificial horizon by horizontally swiping across the display. Refer to the [LVGL Tileview Documentation](https://docs.lvgl.io/master/details/widgets/tileview.html) for implementation details.
   * **Visibility Management:** The project includes a visibility management system that tracks which tile is currently visible and optimizes UI updates accordingly. Components continue data processing but skip UI updates when not visible.
 
 ### Component Visibility System
@@ -125,21 +135,43 @@ When creating a new tile component, follow these patterns:
 
 ### Stopwatch Functionality
 
-  * **Two Independent Timers:** Each stopwatch (Cyan and Yellow) will operate independently using dedicated timers.
-  * **Display Updates:** The stopwatch values will be updated and rendered on their respective LVGL pages.
+  * **Two Independent Timers:** Each stopwatch (Cyan and Yellow) operates independently using dedicated timers.
+  * **Display Updates:** The stopwatch values are updated and rendered on their respective LVGL pages with custom seven-segment font.
+  * **Precision:** High-precision timing with millisecond accuracy using FreeRTOS tick counters.
+
+### G-Meter (G-Force Meter)
+
+  * **Real-time G-Force Display:** Shows current G-force with signed values (+/-) to indicate direction.
+  * **Color-Coded Warnings:** 
+      * **White:** Normal range (0.8G to 1.2G)
+      * **Orange:** Warning range (outside normal but within limits)
+      * **Red:** Danger range (below -1.0G or above 3.0G)
+  * **Min/Max Tracking:** Continuously tracks and displays minimum and maximum G-forces encountered.
+  * **Reset Functionality:** Button to reset min/max values to current G-force.
+  * **Aircraft G-Force Calculation:** Uses signed Z-axis acceleration for proper inverted flight detection.
+  * **Display Format:** Shows values like "+1.0G" (normal flight) or "-1.0G" (inverted flight).
+
+### IMU System
+
+  * **QMI8658 IMU Sensor:** 6-axis IMU (accelerometer + gyroscope) data acquisition.
+  * **Software Filtering:** Optional exponential moving average low-pass filtering for accelerometer and gyroscope data to reduce noise.
+  * **Aircraft Coordinate System:** X=forward(roll), Y=right(pitch), Z=down(yaw)
+  * **Gyroscope Calibration:** Automatic gyroscope bias calibration on startup (2000 samples) processed in batches to avoid blocking.
+  * **G-Force Calculation:** 
+      * **Aircraft G-Force:** Returns signed Z-axis acceleration for proper inverted flight detection
+      * **Total Acceleration:** Separate function for magnitude calculation when needed
+  * **Performance:** Optimized for 125Hz sampling rate with efficient task management.
+  * **Key Functions:**
+      * `imu_calculate_g_load_factor()`: Returns signed G-force (+1G normal, -1G inverted)
+      * `imu_calculate_total_acceleration()`: Returns total acceleration magnitude
+      * `imu_calculate_turn_rate()`: Returns yaw axis turn rate in deg/s
 
 ### Artificial Horizon
 
-  * **QMI8658 IMU Sensor:** 6-axis IMU (accelerometer + gyroscope) data from the QMI8658 used for basic sensor data acquisition.
-  * **Software Filtering:** Optional exponential moving average low-pass filtering for accelerometer and gyroscope data to reduce noise.
-  * **Raw Sensor Data:** The IMU system provides calibrated accelerometer (mg) and gyroscope (deg/s) data in aircraft coordinate system.
-  * **Basic Features:** 
-      * Real-time G-force load factor calculation from accelerometer magnitude
-      * Aircraft-style turn rate calculation from yaw axis gyroscope data
-      * Automatic gyroscope bias calibration on startup (2000 samples)
-      * Software filtering with configurable parameters (FILTER_ALPHA, enable/disable per sensor)
-  * **Aircraft Coordinate System:** X=forward(roll), Y=right(pitch), Z=down(yaw)
-  * **Performance:** Optimized for 125Hz sampling rate with batched calibration processing to avoid blocking IMU readings.
+  * **IMU Integration:** Uses the same IMU system as G-meter for consistent sensor data.
+  * **Aircraft-Style Display:** Graphical representation following aviation standards.
+  * **G-Force Monitoring:** Integrated G-force display with color-coded warnings.
+  * **Turn Rate Display:** Shows aircraft turn rate from yaw axis gyroscope data.
 
 -----
 

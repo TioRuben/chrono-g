@@ -7,7 +7,7 @@
 #include <math.h>
 #include <stdio.h>
 
-LV_FONT_DECLARE(lv_font_g_meter_150);
+LV_FONT_DECLARE(lv_font_g_meter_96);
 
 static const char *TAG = "G_METER";
 
@@ -58,7 +58,7 @@ static lv_color_t calculate_g_color(float g_value)
         // Below minimum or above maximum limit - red
         return lv_color_hex(0xFF0000);
     }
-    else if (g_value >= 0.8f && g_value <= 1.2f)
+    else if (g_value >= 0.6f && g_value <= 1.4f)
     {
         // Normal 1G range - white
         return lv_color_hex(0xFFFFFF);
@@ -120,7 +120,7 @@ static void update_g_meter(lv_timer_t *timer)
     if (need_g_update)
     {
         char g_buf[16];
-        snprintf(g_buf, sizeof(g_buf), "%.1fG", g_meter_state.current_g);
+        snprintf(g_buf, sizeof(g_buf), "%+.1fG", g_meter_state.current_g);
         lv_label_set_text(g_meter_state.g_value_label, g_buf);
         lv_obj_set_style_text_color(g_meter_state.g_value_label, calculate_g_color(g_meter_state.current_g), 0);
         g_meter_state.last_displayed_g = g_meter_state.current_g;
@@ -130,7 +130,7 @@ static void update_g_meter(lv_timer_t *timer)
     if (need_minmax_update)
     {
         char minmax_buf[64];
-        snprintf(minmax_buf, sizeof(minmax_buf), "Min: %.1f    Max: %.1f", g_meter_state.min_g, g_meter_state.max_g);
+        snprintf(minmax_buf, sizeof(minmax_buf), "Min: %+.1f    Max: %+.1f", g_meter_state.min_g, g_meter_state.max_g);
         lv_label_set_text(g_meter_state.minmax_label, minmax_buf);
         g_meter_state.last_displayed_min_g = g_meter_state.min_g;
         g_meter_state.last_displayed_max_g = g_meter_state.max_g;
@@ -156,7 +156,7 @@ static void reset_btn_event_cb(lv_event_t *e)
         if (g_meter_state.is_visible && g_meter_state.minmax_label != NULL)
         {
             char minmax_buf[64];
-            snprintf(minmax_buf, sizeof(minmax_buf), "Min: %.1f    Max: %.1f", g_meter_state.min_g, g_meter_state.max_g);
+            snprintf(minmax_buf, sizeof(minmax_buf), "Min: %+.1f    Max: %+.1f", g_meter_state.min_g, g_meter_state.max_g);
             lv_label_set_text(g_meter_state.minmax_label, minmax_buf);
             g_meter_state.last_displayed_min_g = g_meter_state.min_g;
             g_meter_state.last_displayed_max_g = g_meter_state.max_g;
@@ -191,26 +191,33 @@ lv_obj_t *g_meter_init(lv_obj_t *parent)
 
     // Create main G value label (centered)
     g_meter_state.g_value_label = lv_label_create(page);
-    lv_label_set_text(g_meter_state.g_value_label, "1.0G");
-    lv_obj_set_style_text_font(g_meter_state.g_value_label, &lv_font_g_meter_150, 0);
+    lv_label_set_text(g_meter_state.g_value_label, "+1.0G");
+    lv_obj_set_style_text_font(g_meter_state.g_value_label, &lv_font_g_meter_96, 0);
     lv_obj_set_style_text_color(g_meter_state.g_value_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(g_meter_state.g_value_label);
 
     ESP_LOGI(TAG, "Created main G value label: %p", g_meter_state.g_value_label);
 
-    // Create single centered min/max label (positioned above the reset button)
+    // Create single centered min/max label (positioned higher above the reset button)
     g_meter_state.minmax_label = lv_label_create(page);
-    lv_label_set_text(g_meter_state.minmax_label, "Min: 1.0    Max: 1.0");
-    lv_obj_set_style_text_font(g_meter_state.minmax_label, &lv_font_montserrat_24, 0);
+    lv_label_set_text(g_meter_state.minmax_label, "Min: +1.0    Max: +1.0");
+    lv_obj_set_style_text_font(g_meter_state.minmax_label, &lv_font_montserrat_34, 0);
     lv_obj_set_style_text_color(g_meter_state.minmax_label, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_align(g_meter_state.minmax_label, LV_ALIGN_BOTTOM_MID, 0, -120);
+    lv_obj_align(g_meter_state.minmax_label, LV_ALIGN_BOTTOM_MID, 0, -130);
 
     ESP_LOGI(TAG, "Created minmax label: %p", g_meter_state.minmax_label);
 
-    // Create reset button (full width at bottom, 2x taller, same style as stopwatches)
-    g_meter_state.reset_btn = lv_btn_create(page);
-    lv_obj_set_size(g_meter_state.reset_btn, lv_pct(100), 100);
-    lv_obj_align(g_meter_state.reset_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
+    // Create button container (same pattern as stopwatches)
+    lv_obj_t *btn_container = lv_obj_create(page);
+    lv_obj_set_size(btn_container, lv_pct(100), lv_pct(25));
+    lv_obj_align(btn_container, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_opa(btn_container, LV_OPA_0, 0);
+    lv_obj_set_style_pad_all(btn_container, 0, 0);
+    lv_obj_set_style_border_width(btn_container, 0, 0);
+
+    // Create reset button (same height as stopwatch buttons)
+    g_meter_state.reset_btn = lv_btn_create(btn_container);
+    lv_obj_set_size(g_meter_state.reset_btn, lv_pct(100), lv_pct(100));
     lv_obj_set_style_bg_color(g_meter_state.reset_btn, lv_color_hex(0x808080), LV_PART_MAIN);
     lv_obj_set_style_radius(g_meter_state.reset_btn, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(g_meter_state.reset_btn, 0, LV_PART_MAIN);
@@ -254,7 +261,7 @@ void g_meter_set_visible(bool visible)
 
         // Update all displays
         char g_buf[16];
-        snprintf(g_buf, sizeof(g_buf), "%.1fG", g_meter_state.current_g);
+        snprintf(g_buf, sizeof(g_buf), "%+.1fG", g_meter_state.current_g);
         lv_label_set_text(g_meter_state.g_value_label, g_buf);
 
         lv_color_t g_color = calculate_g_color(g_meter_state.current_g);
@@ -266,7 +273,7 @@ void g_meter_set_visible(bool visible)
         g_meter_state.last_displayed_max_g = g_meter_state.max_g;
 
         char minmax_buf[64];
-        snprintf(minmax_buf, sizeof(minmax_buf), "Min: %.1f    Max: %.1f", g_meter_state.min_g, g_meter_state.max_g);
+        snprintf(minmax_buf, sizeof(minmax_buf), "Min: %+.1f    Max: %+.1f", g_meter_state.min_g, g_meter_state.max_g);
         lv_label_set_text(g_meter_state.minmax_label, minmax_buf);
 
         // Force immediate refresh

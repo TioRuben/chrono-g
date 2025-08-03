@@ -64,17 +64,35 @@ extern "C"
     imu_calibration_status_t imu_get_calibration_status(void);
 
     /**
-     * @brief Calculate total G-force load factor from accelerometer readings
+     * @brief Calculate aircraft G-force load factor from Z-axis accelerometer reading
      *
-     * Calculates the total G-force magnitude from X, Y, Z accelerometer readings
-     * in milli-g units, returning the load factor in G units
+     * Returns the signed Z-axis acceleration as the G-force load factor.
+     * In aircraft coordinate system (Z=down):
+     * - +1G = normal upright flight (gravity pulling down)
+     * - -1G = inverted flight (gravity pulling up relative to aircraft)
+     * - >1G = pulling up (positive load factor)
+     * - <-1G = pushing down while inverted (negative load factor)
+     *
+     * @param accel_x_mg Accelerometer X-axis reading in milli-g (unused for G-force)
+     * @param accel_y_mg Accelerometer Y-axis reading in milli-g (unused for G-force)
+     * @param accel_z_mg Accelerometer Z-axis reading in milli-g (primary axis for G-force)
+     * @return float Signed G-force load factor (can be negative for inverted flight)
+     */
+    float imu_calculate_g_load_factor(float accel_x_mg, float accel_y_mg, float accel_z_mg);
+
+    /**
+     * @brief Calculate total acceleration magnitude from accelerometer readings
+     *
+     * Calculates the total acceleration magnitude from X, Y, Z accelerometer readings
+     * in milli-g units, returning the magnitude in G units. Always positive.
+     * Useful for detecting motion, vibration, or total acceleration regardless of direction.
      *
      * @param accel_x_mg Accelerometer X-axis reading in milli-g
      * @param accel_y_mg Accelerometer Y-axis reading in milli-g
      * @param accel_z_mg Accelerometer Z-axis reading in milli-g
-     * @return float Total G-force load factor
+     * @return float Total acceleration magnitude (always positive)
      */
-    float imu_calculate_g_load_factor(float accel_x_mg, float accel_y_mg, float accel_z_mg);
+    float imu_calculate_total_acceleration(float accel_x_mg, float accel_y_mg, float accel_z_mg);
 
     /**
      * @brief Calculate aircraft turn rate like a standard turn indicator

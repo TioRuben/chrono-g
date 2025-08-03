@@ -369,11 +369,23 @@ static void imu_task(void *pvParameters)
 float imu_calculate_g_load_factor(float accel_x_mg, float accel_y_mg, float accel_z_mg)
 {
     // Convert milli-g to g by dividing by 1000
+    float accel_z_g = accel_z_mg / 1000.0f;
+
+    // Return signed Z-axis acceleration for aircraft G-force
+    // Aircraft coordinate system: Z=down (positive when pulling up, negative when inverted)
+    // +1G = normal upright flight, -1G = inverted flight
+    return accel_z_g;
+}
+
+float imu_calculate_total_acceleration(float accel_x_mg, float accel_y_mg, float accel_z_mg)
+{
+    // Convert milli-g to g by dividing by 1000
     float accel_x_g = accel_x_mg / 1000.0f;
     float accel_y_g = accel_y_mg / 1000.0f;
     float accel_z_g = accel_z_mg / 1000.0f;
 
-    // Calculate magnitude (total G-force load factor)
+    // Calculate magnitude (total acceleration magnitude)
+    // Always positive, useful for detecting motion/vibration
     return sqrtf(accel_x_g * accel_x_g + accel_y_g * accel_y_g + accel_z_g * accel_z_g);
 }
 
