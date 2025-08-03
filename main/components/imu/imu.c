@@ -305,7 +305,7 @@ static void imu_task(void *pvParameters)
     imu_data_t raw_imu_data;
     imu_data_t mapped_imu_data;
     TickType_t last_wake_time = xTaskGetTickCount();
-    const TickType_t frequency = pdMS_TO_TICKS(8); // 125Hz = 8ms period
+    const TickType_t frequency = pdMS_TO_TICKS(16); // 125Hz = 8ms period
 
     while (1)
     {
@@ -435,7 +435,7 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
         return ret;
     }
 
-    ret = qmi8658_set_accel_odr(&dev, QMI8658_ACCEL_ODR_125HZ);
+    ret = qmi8658_set_accel_odr(&dev, QMI8658_ACCEL_ODR_62_5HZ);
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to set accelerometer ODR: %d", ret);
@@ -452,7 +452,7 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
         return ret;
     }
 
-    ret = qmi8658_set_gyro_odr(&dev, QMI8658_GYRO_ODR_125HZ);
+    ret = qmi8658_set_gyro_odr(&dev, QMI8658_ACCEL_ODR_62_5HZ);
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to set gyroscope ODR: %d", ret);

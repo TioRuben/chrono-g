@@ -15,14 +15,22 @@
 #include "bsp/touch.h"
 #include "cyan_stopwatch.h"
 #include "yellow_stopwatch.h"
+#include "g_meter.h"
 #include "imu.h"
 #include "visibility_manager.h"
+#include "aircraft_selector.h"
+#include "aircraft_header.h"
 #include <math.h>
 
 static const char *TAG = "Main";
 
 // IMU data queue (single element queue for latest data)
 static QueueHandle_t imu_queue = NULL;
+
+// Global UI objects
+static lv_obj_t *aircraft_selector_obj = NULL;
+static lv_obj_t *aircraft_header_obj = NULL;
+static lv_obj_t *tileview = NULL;
 
 /**
  * @brief Convert calibration status enum to readable string
@@ -96,6 +104,32 @@ QueueHandle_t get_imu_queue(void)
     return imu_queue;
 }
 
+/**
+ * @brief Callback function called when user selects an aircraft
+ */
+static void aircraft_selection_callback(const char *aircraft_id)
+{
+    ESP_LOGI(TAG, "Aircraft selection callback: %s", aircraft_id);
+
+    // Clean up the aircraft selector
+    if (aircraft_selector_obj)
+    {
+        aircraft_selector_cleanup(aircraft_selector_obj);
+        aircraft_selector_obj = NULL;
+    }
+
+    // Create the aircraft header with the selected aircraft ID
+    aircraft_header_obj = aircraft_header_init(lv_scr_act(), aircraft_id);
+
+    // Show the main application screen (tileview)
+    if (tileview)
+    {
+        lv_obj_clear_flag(tileview, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    ESP_LOGI(TAG, "Main application screen is now visible with aircraft: %s", aircraft_id);
+}
+
 // Tileview event callback for visibility optimization
 static void tileview_event_cb(lv_event_t *e)
 {
@@ -116,17 +150,17 @@ static void tileview_event_cb(lv_event_t *e)
     case TILE_CYAN_STOPWATCH:
         cyan_stopwatch_set_visible(true);
         yellow_stopwatch_set_visible(false);
-        // artificial_horizon_set_visible(false); // Will be added when component is created
+        g_meter_set_visible(false);
         break;
     case TILE_YELLOW_STOPWATCH:
         cyan_stopwatch_set_visible(false);
         yellow_stopwatch_set_visible(true);
-        // artificial_horizon_set_visible(false); // Will be added when component is created
+        g_meter_set_visible(false);
         break;
-    case TILE_ARTIFICIAL_HORIZON:
+    case TILE_G_METER:
         cyan_stopwatch_set_visible(false);
         yellow_stopwatch_set_visible(false);
-        // artificial_horizon_set_visible(true); // Will be added when component is created
+        g_meter_set_visible(true);
         break;
     default:
         ESP_LOGW(TAG, "Unknown tile index: %d", (int)tile_index);
@@ -142,8 +176,8 @@ void app_main(void)
     // Initialize display with optimized buffer configuration
     // Reduce buffer size to save memory - use smaller partial buffer instead of full framebuffer
     bsp_display_cfg_t disp_cfg = {
-        .double_buffer = true,   // Disable double buffering to save ~435KB memory
-        .buffer_size = 466 * 50, // Use partial rendering buffer (50 lines instead of full screen)
+        .double_buffer = true,         // Disable double buffering to save ~435KB memory
+        .buffer_size = 466 * 466 / 12, // Use partial rendering buffer (50 lines instead of full screen)
         .lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG(),
         .flags = {
             .buff_dma = true,
@@ -166,27 +200,32 @@ void app_main(void)
     // Set screen background to pure black
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x000000), LV_PART_MAIN);
 
-    // Create tileview
-    lv_obj_t *tileview = lv_tileview_create(lv_scr_act());
+    // Create tileview (initially hidden)
+    tileview = lv_tileview_create(lv_scr_act());
     lv_obj_set_size(tileview, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_color(tileview, lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_add_flag(tileview, LV_OBJ_FLAG_HIDDEN); // Hide initially until aircraft is selected
 
     // Create tiles for each component
     lv_obj_t *cyan_tile = lv_tileview_add_tile(tileview, 0, 0, LV_DIR_HOR);
     lv_obj_t *yellow_tile = lv_tileview_add_tile(tileview, 1, 0, LV_DIR_HOR);
-    lv_obj_t *horizon_tile = lv_tileview_add_tile(tileview, 2, 0, LV_DIR_HOR);
+    lv_obj_t *g_meter_tile = lv_tileview_add_tile(tileview, 2, 0, LV_DIR_HOR);
 
     // Make tiles borderless
     lv_obj_set_style_border_width(cyan_tile, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(yellow_tile, 0, LV_PART_MAIN);
-    lv_obj_set_style_border_width(horizon_tile, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(g_meter_tile, 0, LV_PART_MAIN);
 
     // Initialize components
     cyan_stopwatch_init(cyan_tile);
     yellow_stopwatch_init(yellow_tile);
+    g_meter_init(g_meter_tile);
 
     // Add tileview event handler for visibility optimization
     lv_obj_add_event_cb(tileview, tileview_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
+
+    // Create aircraft selection screen
+    aircraft_selector_obj = aircraft_selector_init(lv_scr_act(), aircraft_selection_callback);
 
     bsp_display_unlock();
 
@@ -221,6 +260,6 @@ void app_main(void)
             ESP_LOGW(TAG, "No IMU data available in queue");
         }
 
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
