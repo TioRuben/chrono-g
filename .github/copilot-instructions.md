@@ -46,12 +46,14 @@ This project is built using the **ESP-IDF framework** (C language). The followin
 
 ## Project Structure
 
-The project is structured to ensure modularity and maintainability. Each display page will reside in its own `.c` file, accompanied by a corresponding header file (`.h`). These individual page files will then be included and managed within `main.c`.
+The project is structured to ensure modularity and maintainability. Each display page will reside in its own `.c` file, accompanied by a corresponding header file (`.h`). These individual page files will then be included and managed within `main.c`. The project also includes a visibility management system to optimize UI updates based on which tile is currently visible.
 
 ```
 .
 ├── main/
 │   ├── main.c
+│   ├── visibility_manager.c
+│   ├── visibility_manager.h
 │   ├── components/
 │   │   ├── cyan_stopwatch/
 │   │   │   ├── cyan_stopwatch.c
@@ -75,6 +77,51 @@ The project is structured to ensure modularity and maintainability. Each display
 
   * **LVGL Tileview:** The three display pages will be implemented as tiles within an **LVGL Tileview** object.
   * **Horizontal Swiping:** Users will navigate between the stopwatch pages and the artificial horizon by horizontally swiping across the display. Refer to the [LVGL Tileview Documentation](https://docs.lvgl.io/master/details/widgets/tileview.html) for implementation details.
+  * **Visibility Management:** The project includes a visibility management system that tracks which tile is currently visible and optimizes UI updates accordingly. Components continue data processing but skip UI updates when not visible.
+
+### Component Visibility System
+
+Each component must implement visibility control to optimize performance:
+
+  * **Visibility Function:** Each component should provide a `<component>_set_visible(bool visible)` function
+  * **UI Update Control:** When not visible, components should continue data processing but skip UI rendering operations
+  * **State Synchronization:** When becoming visible, components should update their UI to reflect the current state
+  * **Integration:** New components must be integrated into the `tileview_event_cb` function in `main.c` to receive visibility notifications
+
+### Component Implementation Guidelines
+
+When creating a new tile component, follow these patterns:
+
+1. **Header File (.h):**
+   ```c
+   // Include visibility control function
+   void <component>_set_visible(bool visible);
+   ```
+
+2. **Source File (.c):**
+   ```c
+   // Add visibility state to component structure
+   static struct {
+       // ... other fields
+       bool is_visible;
+   } component_state = {0};
+
+   // Check visibility before UI updates
+   if (component_state.is_visible) {
+       // Perform UI updates
+   }
+
+   // Implement visibility control function
+   void <component>_set_visible(bool visible) {
+       component_state.is_visible = visible;
+       // Update UI if becoming visible and state is out of sync
+   }
+   ```
+
+3. **Main Integration:**
+   - Add the component to the `tile_index_t` enum in `visibility_manager.h`
+   - Include the visibility call in `tileview_event_cb` function in `main.c`
+   - Update `CMakeLists.txt` to include the new component files
 
 ### Stopwatch Functionality
 
@@ -103,6 +150,7 @@ The project is structured to ensure modularity and maintainability. Each display
   * **Include Optimization:** Only include headers that are actually used to minimize memory footprint.
   * **Error Handling:** Implement robust error handling for sensor readings, display operations, and timer management.
   * **Performance:** Optimize code for performance, particularly for the ESP-DSP EKF and display rendering, to ensure smooth user experience at ~60 FPS.
+  * **Visibility Optimization:** Always implement visibility control in UI components to prevent unnecessary updates when tiles are not visible, improving battery life and system performance.
 
 -----
 

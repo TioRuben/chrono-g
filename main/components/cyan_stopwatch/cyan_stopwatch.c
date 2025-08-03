@@ -7,6 +7,7 @@ static struct
 {
     uint32_t seconds_counted;
     bool stopwatch_running;
+    bool is_visible;
     lv_timer_t *timer;
     lv_obj_t *time_label;
     lv_obj_t *btn;
@@ -29,9 +30,14 @@ static void update_stopwatch(lv_timer_t *timer)
     if (cyan_state.stopwatch_running)
     {
         cyan_state.seconds_counted++;
-        char buf[16]; // Restored to 16 bytes to accommodate format (max 14 bytes needed + null terminator)
-        format_time(buf, sizeof(buf), cyan_state.seconds_counted);
-        lv_label_set_text(cyan_state.time_label, buf);
+
+        // Only update UI if component is visible
+        if (cyan_state.is_visible)
+        {
+            char buf[16]; // Restored to 16 bytes to accommodate format (max 14 bytes needed + null terminator)
+            format_time(buf, sizeof(buf), cyan_state.seconds_counted);
+            lv_label_set_text(cyan_state.time_label, buf);
+        }
     }
 }
 
@@ -155,5 +161,21 @@ lv_obj_t *cyan_stopwatch_init(lv_obj_t *parent)
     cyan_state.timer = lv_timer_create(update_stopwatch, 1000, NULL);
     lv_timer_pause(cyan_state.timer);
 
+    // Initialize as visible by default
+    cyan_state.is_visible = true;
+
     return container;
+}
+
+void cyan_stopwatch_set_visible(bool visible)
+{
+    cyan_state.is_visible = visible;
+
+    // If becoming visible and UI is out of sync, update display
+    if (visible && cyan_state.stopwatch_running)
+    {
+        char buf[16];
+        format_time(buf, sizeof(buf), cyan_state.seconds_counted);
+        lv_label_set_text(cyan_state.time_label, buf);
+    }
 }

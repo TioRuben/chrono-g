@@ -16,6 +16,7 @@
 #include "cyan_stopwatch.h"
 #include "yellow_stopwatch.h"
 #include "imu.h"
+#include "visibility_manager.h"
 #include <math.h>
 
 static const char *TAG = "Main";
@@ -121,18 +122,42 @@ static void tileview_event_cb(lv_event_t *e)
     lv_obj_t *active_tile = lv_tileview_get_tile_act(tileview);
 
     // Get tile index by checking which tile is active
-    // We can use the tile's user data or check the tile directly
     int32_t tile_index = lv_obj_get_index(active_tile);
 
-    // Tile 2 is the artificial horizon (index 2)
-    bool horizon_visible = (tile_index == 2);
+    ESP_LOGI(TAG, "Tile switched to index %d", (int)tile_index);
 
-    ESP_LOGI(TAG, "Tile switched to index %d, horizon visible: %s",
-             (int)tile_index, horizon_visible ? "true" : "false");
+    // Update visibility manager with the new active tile
+    visibility_manager_set_tile_visible((tile_index_t)tile_index, true);
+
+    // Notify individual components of their visibility state
+    switch (tile_index)
+    {
+    case TILE_CYAN_STOPWATCH:
+        cyan_stopwatch_set_visible(true);
+        yellow_stopwatch_set_visible(false);
+        // artificial_horizon_set_visible(false); // Will be added when component is created
+        break;
+    case TILE_YELLOW_STOPWATCH:
+        cyan_stopwatch_set_visible(false);
+        yellow_stopwatch_set_visible(true);
+        // artificial_horizon_set_visible(false); // Will be added when component is created
+        break;
+    case TILE_ARTIFICIAL_HORIZON:
+        cyan_stopwatch_set_visible(false);
+        yellow_stopwatch_set_visible(false);
+        // artificial_horizon_set_visible(true); // Will be added when component is created
+        break;
+    default:
+        ESP_LOGW(TAG, "Unknown tile index: %d", (int)tile_index);
+        break;
+    }
 }
 
 void app_main(void)
 {
+    // Initialize visibility manager first
+    visibility_manager_init();
+
     // Initialize display with optimized buffer configuration
     // Reduce buffer size to save memory - use smaller partial buffer instead of full framebuffer
     bsp_display_cfg_t disp_cfg = {
