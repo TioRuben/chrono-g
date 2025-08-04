@@ -22,9 +22,9 @@ lv_obj_t *aircraft_header_init(lv_obj_t *parent, const char *aircraft_id)
 
     // Create header container with white background
     lv_obj_t *header_container = lv_obj_create(parent);
-    lv_obj_set_size(header_container, LV_PCT(100), 50);      // 100% width, 50px height
-    lv_obj_align(header_container, LV_ALIGN_TOP_MID, 0, 10); // 10px from top
-    lv_obj_set_style_bg_color(header_container, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    lv_obj_set_size(header_container, LV_PCT(100), 70);      // 100% width, 50px height
+    lv_obj_align(header_container, LV_ALIGN_TOP_MID, 0, 15); // 10px from top
+    lv_obj_set_style_bg_color(header_container, lv_color_hex(0xdadada), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(header_container, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(header_container, 2, LV_PART_MAIN);
     lv_obj_set_style_border_color(header_container, lv_color_hex(0x000000), LV_PART_MAIN);
@@ -35,7 +35,7 @@ lv_obj_t *aircraft_header_init(lv_obj_t *parent, const char *aircraft_id)
     // Create label with black text
     lv_obj_t *label = lv_label_create(header_container);
     lv_label_set_text(label, aircraft_id ? aircraft_id : "UNKNOWN");
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_38, 0);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_42, 0);
     lv_obj_set_style_text_color(label, lv_color_hex(0x000000), 0); // Black text
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_center(label);

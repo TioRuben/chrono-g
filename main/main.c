@@ -210,6 +210,7 @@ void app_main(void)
     lv_obj_t *cyan_tile = lv_tileview_add_tile(tileview, 0, 0, LV_DIR_HOR);
     lv_obj_t *yellow_tile = lv_tileview_add_tile(tileview, 1, 0, LV_DIR_HOR);
     lv_obj_t *g_meter_tile = lv_tileview_add_tile(tileview, 2, 0, LV_DIR_HOR);
+    lv_obj_set_style_anim(tileview, NULL, LV_PART_MAIN); // Disable animations for performance
 
     // Make tiles borderless
     lv_obj_set_style_border_width(cyan_tile, 0, LV_PART_MAIN);
@@ -246,19 +247,19 @@ void app_main(void)
     }
 
     // Main loop - read IMU data and log values every 5 seconds
-    imu_data_t imu_data;
+    // imu_data_t imu_data;
     while (1)
     {
-        // Try to read the latest IMU data from queue (non-blocking)
-        if (xQueueReceive(imu_queue, &imu_data, 0) == pdTRUE)
-        {
-            // Log comprehensive IMU data using the new logging function
-            log_imu_data(&imu_data);
-        }
-        else
-        {
-            ESP_LOGW(TAG, "No IMU data available in queue");
-        }
+        // // Try to read the latest IMU data from queue (non-blocking)
+        // if (xQueueReceive(imu_queue, &imu_data, 0) == pdTRUE)
+        // {
+        //     // Log comprehensive IMU data using the new logging function
+        //     log_imu_data(&imu_data);
+        // }
+        // else
+        // {
+        //     ESP_LOGW(TAG, "No IMU data available in queue");
+        // }
 
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
