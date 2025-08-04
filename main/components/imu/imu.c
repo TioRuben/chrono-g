@@ -54,7 +54,7 @@ static const char *TAG = "IMU";
 
 // IMU timing and performance parameters
 // =====================================
-#define IMU_BASE_FREQUENCY_HZ 125          // Base IMU sampling rate in Hz (matches QMI8658 ODR)
+#define IMU_BASE_FREQUENCY_HZ 62.5         // Base IMU sampling rate in Hz (matches QMI8658 ODR)
 #define IMU_TASK_PRIORITY_OFFSET 1         // Priority offset from configMAX_PRIORITIES (higher = more priority)
 #define IMU_STACK_SIZE 4096                // Stack size for IMU task in bytes
 #define CALIBRATION_TASK_PRIORITY_OFFSET 2 // Priority offset for calibration task (lower than IMU)
@@ -457,7 +457,7 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
     qmi8658_set_accel_unit_mg(&dev, true);
 
     // Configure gyroscope
-    ret = qmi8658_set_gyro_range(&dev, QMI8658_GYRO_RANGE_512DPS);
+    ret = qmi8658_set_gyro_range(&dev, QMI8658_GYRO_RANGE_128DPS);
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to set gyroscope range: %d", ret);

@@ -12,6 +12,7 @@
     "IDF_TARGET": "esp32s3"
   },
   "files.associations": {
-    "touch.h": "c"
+    "touch.h": "c",
+    "iterator": "c"
   }
 }
