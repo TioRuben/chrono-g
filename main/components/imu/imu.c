@@ -38,12 +38,24 @@ static const char *TAG = "IMU";
 // Exponential moving average filter applied to sensor data
 // Helps reduce high-frequency noise from sensors
 
-#define FILTER_ALPHA 0.15f // Filter coefficient (0.0 - 1.0)
-                           // 0.0 = no new data (infinite filtering)
-                           // 1.0 = no filtering (pass-through)
-                           // Higher values = less filtering, more responsive
-                           // Lower values = more filtering, smoother but delayed
-                           // Recommended: 0.1-0.2 for most applications
+#define FILTER_ALPHA_ACCEL 0.15f // Filter coefficient (0.0 - 1.0)
+                                 // 0.0 = no new data (infinite filtering)
+                                 // 1.0 = no filtering (pass-through)
+                                 // Higher values = less filtering, more responsive
+                                 // Lower values = more filtering, smoother but delayed
+                                 // Recommended: 0.1-0.2 for most applications
+
+// Software low-pass filter parameters
+// ===================================
+// Exponential moving average filter applied to sensor data
+// Helps reduce high-frequency noise from sensors
+
+#define FILTER_ALPHA_GYRO 0.3f // Filter coefficient (0.0 - 1.0)
+                               // 0.0 = no new data (infinite filtering)
+                               // 1.0 = no filtering (pass-through)
+                               // Higher values = less filtering, more responsive
+                               // Lower values = more filtering, smoother but delayed
+                               // Recommended: 0.1-0.2 for most applications
 
 #define FILTER_ENABLE_ACCEL 1 // Enable accelerometer filtering (recommended)
 #define FILTER_ENABLE_GYRO 1  // Enable gyroscope filtering (recommended)
@@ -265,9 +277,9 @@ static void apply_software_filter(imu_data_t *raw_data, imu_data_t *filtered_out
     // Apply exponential moving average filter
     if (FILTER_ENABLE_ACCEL)
     {
-        filtered_output->accel_x = FILTER_ALPHA * raw_data->accel_x + (1.0f - FILTER_ALPHA) * filtered_output->accel_x;
-        filtered_output->accel_y = FILTER_ALPHA * raw_data->accel_y + (1.0f - FILTER_ALPHA) * filtered_output->accel_y;
-        filtered_output->accel_z = FILTER_ALPHA * raw_data->accel_z + (1.0f - FILTER_ALPHA) * filtered_output->accel_z;
+        filtered_output->accel_x = FILTER_ALPHA_ACCEL * raw_data->accel_x + (1.0f - FILTER_ALPHA_ACCEL) * filtered_output->accel_x;
+        filtered_output->accel_y = FILTER_ALPHA_ACCEL * raw_data->accel_y + (1.0f - FILTER_ALPHA_ACCEL) * filtered_output->accel_y;
+        filtered_output->accel_z = FILTER_ALPHA_ACCEL * raw_data->accel_z + (1.0f - FILTER_ALPHA_ACCEL) * filtered_output->accel_z;
     }
     else
     {
@@ -279,9 +291,9 @@ static void apply_software_filter(imu_data_t *raw_data, imu_data_t *filtered_out
 
     if (FILTER_ENABLE_GYRO)
     {
-        filtered_output->gyro_x = FILTER_ALPHA * raw_data->gyro_x + (1.0f - FILTER_ALPHA) * filtered_output->gyro_x;
-        filtered_output->gyro_y = FILTER_ALPHA * raw_data->gyro_y + (1.0f - FILTER_ALPHA) * filtered_output->gyro_y;
-        filtered_output->gyro_z = FILTER_ALPHA * raw_data->gyro_z + (1.0f - FILTER_ALPHA) * filtered_output->gyro_z;
+        filtered_output->gyro_x = FILTER_ALPHA_GYRO * raw_data->gyro_x + (1.0f - FILTER_ALPHA_GYRO) * filtered_output->gyro_x;
+        filtered_output->gyro_y = FILTER_ALPHA_GYRO * raw_data->gyro_y + (1.0f - FILTER_ALPHA_GYRO) * filtered_output->gyro_y;
+        filtered_output->gyro_z = FILTER_ALPHA_GYRO * raw_data->gyro_z + (1.0f - FILTER_ALPHA_GYRO) * filtered_output->gyro_z;
     }
     else
     {
@@ -416,9 +428,9 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
     imu_data_queue = imu_queue;
 
     // Runtime parameter validation
-    if (FILTER_ALPHA < 0.0f || FILTER_ALPHA > 1.0f)
+    if (FILTER_ALPHA_GYRO < 0.0f || FILTER_ALPHA_GYRO > 1.0f || FILTER_ALPHA_ACCEL < 0.0f || FILTER_ALPHA_ACCEL > 1.0f)
     {
-        ESP_LOGE(TAG, "Invalid FILTER_ALPHA (%.3f). Must be between 0.0 and 1.0", FILTER_ALPHA);
+        ESP_LOGE(TAG, "Invalid FILTER_ALPHA (gyro %.3f / accel %.3f). Must be between 0.0 and 1.0", FILTER_ALPHA_GYRO, FILTER_ALPHA_ACCEL);
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -478,8 +490,9 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
 
     // Initialize software filter
     filter_initialized = false;
-    ESP_LOGI(TAG, "Software low-pass filter: alpha=%.3f, accel=%s, gyro=%s",
-             FILTER_ALPHA,
+    ESP_LOGI(TAG, "Software low-pass filter: alpha_gyro=%.3f, alpha_accel=%.3f, accel=%s, gyro=%s",
+             FILTER_ALPHA_GYRO,
+             FILTER_ALPHA_ACCEL,
              FILTER_ENABLE_ACCEL ? "enabled" : "disabled",
              FILTER_ENABLE_GYRO ? "enabled" : "disabled");
     ESP_LOGI(TAG, "Aircraft coordinate system: X=forward(roll), Y=right(pitch), Z=down(yaw)");

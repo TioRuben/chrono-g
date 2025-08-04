@@ -186,8 +186,8 @@ void app_main(void)
     // Initialize display with optimized buffer configuration
     // Reduce buffer size to save memory - use smaller partial buffer instead of full framebuffer
     bsp_display_cfg_t disp_cfg = {
-        .double_buffer = true,         // Disable double buffering to save ~435KB memory
-        .buffer_size = 466 * 466 / 12, // Use partial rendering buffer (50 lines instead of full screen)
+        .double_buffer = true,        // Disable double buffering to save ~435KB memory
+        .buffer_size = 466 * 466 / 6, // Use partial rendering buffer (50 lines instead of full screen)
         .lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG(),
         .flags = {
             .buff_dma = true,

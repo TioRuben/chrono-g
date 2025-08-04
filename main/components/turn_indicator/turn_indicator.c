@@ -8,7 +8,7 @@
 static const char *TAG = "TURN_INDICATOR";
 
 // Update rate: 60ms as requested
-#define UPDATE_INTERVAL_MS 250 // 60
+#define UPDATE_INTERVAL_MS 60
 
 LV_IMG_DECLARE(turn_coord_img);
 LV_IMG_DECLARE(aircraft_turn_img);
@@ -25,6 +25,8 @@ static struct
     bool is_visible;
     lv_timer_t *update_timer;
     QueueHandle_t imu_queue;
+    lv_obj_t *aircraft_img; // Aircraft image object for rotation
+    uint8_t sample_counter; // Sample decimation counter (rotate every 3 samples)
 } turn_indicator_state = {
     .turn_rate = 0.0f,
     .gravity_angle = 0.0f,
@@ -34,7 +36,9 @@ static struct
     .last_displayed_turn_time_180 = 999.0f, // Initialize to different value to force first update
     .is_visible = false,
     .update_timer = NULL,
-    .imu_queue = NULL};
+    .imu_queue = NULL,
+    .aircraft_img = NULL,
+    .sample_counter = 0};
 
 /**
  * @brief Calculate gravity vector angle between Z and Y axis
@@ -101,9 +105,44 @@ static void update_turn_indicator(lv_timer_t *timer)
 
         // Calculate 180° turn time
         turn_indicator_state.turn_time_180 = calculate_180_turn_time(turn_indicator_state.turn_rate);
-    }
 
-    // TODO: Update canvas drawing based on turn_rate and gravity_angle
+        // Decimate the rotation updates - only rotate aircraft every 3 samples
+        turn_indicator_state.sample_counter++;
+        if (turn_indicator_state.sample_counter >= 3)
+        {
+            turn_indicator_state.sample_counter = 0;
+
+            // Update aircraft rotation based on turn rate
+            if (turn_indicator_state.aircraft_img)
+            {
+                // Convert turn rate to rotation angle
+                // 3°/s turn rate = 20° rotation, cap at ±40°
+                float rotation_angle = -turn_indicator_state.turn_rate * (20.0f / 6.0f);
+
+                // Cap rotation to ±40°
+                if (rotation_angle > 40.0f)
+                {
+                    rotation_angle = 40.0f;
+                }
+                else if (rotation_angle < -40.0f)
+                {
+                    rotation_angle = -40.0f;
+                }
+
+                // Convert to tenths of degrees for LVGL (angle_x10)
+                int32_t rotation_angle_x10 = (int32_t)(rotation_angle * 10.0f);
+
+                // Lock display to prevent tearing during rotation update
+                bsp_display_lock(0);
+
+                // Apply rotation to aircraft image
+                lv_image_set_rotation(turn_indicator_state.aircraft_img, rotation_angle_x10);
+
+                // Unlock display
+                bsp_display_unlock();
+            }
+        }
+    }
 }
 
 lv_obj_t *turn_indicator_init(lv_obj_t *parent)
@@ -130,11 +169,22 @@ lv_obj_t *turn_indicator_init(lv_obj_t *parent)
     lv_obj_set_size(bg_img, LV_PCT(100), LV_PCT(100));
     lv_obj_align(bg_img, LV_ALIGN_CENTER, 0, 0);
 
-    // Load image turn_coord_img
-    lv_obj_t *aircraft_img = lv_img_create(parent);
-    lv_img_set_src(aircraft_img, &aircraft_turn_img);
-    lv_obj_set_size(aircraft_img, LV_PCT(100), LV_PCT(100));
-    lv_obj_align(aircraft_img, LV_ALIGN_CENTER, 0, 0);
+    // Load aircraft image and store reference in state
+    turn_indicator_state.aircraft_img = lv_img_create(parent);
+    lv_img_set_src(turn_indicator_state.aircraft_img, &aircraft_turn_img);
+    lv_obj_set_size(turn_indicator_state.aircraft_img, LV_PCT(100), LV_PCT(100));
+    lv_obj_align(turn_indicator_state.aircraft_img, LV_ALIGN_CENTER, 0, 0);
+
+    // Set pivot point to center for rotation
+    // Assuming the image is centered, pivot should be at image center
+    // This will be automatically calculated by LVGL as the default pivot is the center
+
+    // Create label at 100px from bottom with "1 min." text
+    lv_obj_t *time_label = lv_label_create(parent);
+    lv_label_set_text(time_label, "1 min.");
+    lv_obj_set_style_text_color(time_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(time_label, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_align(time_label, LV_ALIGN_BOTTOM_MID, 0, -100);
 
     ESP_LOGI(TAG, "Drew initial turn indicator markings");
 
@@ -164,5 +214,6 @@ void turn_indicator_set_visible(bool visible)
         turn_indicator_state.last_displayed_turn_rate = 999.0f;
         turn_indicator_state.last_displayed_gravity_angle = 999.0f;
         turn_indicator_state.last_displayed_turn_time_180 = 999.0f;
+        turn_indicator_state.sample_counter = 0; // Reset sample counter
     }
 }
