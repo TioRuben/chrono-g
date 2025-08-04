@@ -10,7 +10,8 @@ typedef enum {
     TILE_CYAN_STOPWATCH = 0,
     TILE_YELLOW_STOPWATCH = 1,
     TILE_G_METER = 2,
-    TILE_COUNT = 3
+    TILE_TURN_INDICATOR = 3,
+    TILE_COUNT = 4
 } tile_index_t;
 
 /**

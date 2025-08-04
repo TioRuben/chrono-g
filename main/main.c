@@ -16,6 +16,7 @@
 #include "cyan_stopwatch.h"
 #include "yellow_stopwatch.h"
 #include "g_meter.h"
+#include "turn_indicator.h"
 #include "imu.h"
 #include "visibility_manager.h"
 #include "aircraft_selector.h"
@@ -151,16 +152,25 @@ static void tileview_event_cb(lv_event_t *e)
         cyan_stopwatch_set_visible(true);
         yellow_stopwatch_set_visible(false);
         g_meter_set_visible(false);
+        turn_indicator_set_visible(false);
         break;
     case TILE_YELLOW_STOPWATCH:
         cyan_stopwatch_set_visible(false);
         yellow_stopwatch_set_visible(true);
         g_meter_set_visible(false);
+        turn_indicator_set_visible(false);
         break;
     case TILE_G_METER:
         cyan_stopwatch_set_visible(false);
         yellow_stopwatch_set_visible(false);
         g_meter_set_visible(true);
+        turn_indicator_set_visible(false);
+        break;
+    case TILE_TURN_INDICATOR:
+        cyan_stopwatch_set_visible(false);
+        yellow_stopwatch_set_visible(false);
+        g_meter_set_visible(false);
+        turn_indicator_set_visible(true);
         break;
     default:
         ESP_LOGW(TAG, "Unknown tile index: %d", (int)tile_index);
@@ -210,17 +220,20 @@ void app_main(void)
     lv_obj_t *cyan_tile = lv_tileview_add_tile(tileview, 0, 0, LV_DIR_HOR);
     lv_obj_t *yellow_tile = lv_tileview_add_tile(tileview, 1, 0, LV_DIR_HOR);
     lv_obj_t *g_meter_tile = lv_tileview_add_tile(tileview, 2, 0, LV_DIR_HOR);
+    lv_obj_t *turn_indicator_tile = lv_tileview_add_tile(tileview, 3, 0, LV_DIR_HOR);
     lv_obj_set_style_anim(tileview, NULL, LV_PART_MAIN); // Disable animations for performance
 
     // Make tiles borderless
     lv_obj_set_style_border_width(cyan_tile, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(yellow_tile, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(g_meter_tile, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(turn_indicator_tile, 0, LV_PART_MAIN);
 
     // Initialize components
     cyan_stopwatch_init(cyan_tile);
     yellow_stopwatch_init(yellow_tile);
     g_meter_init(g_meter_tile);
+    turn_indicator_init(turn_indicator_tile);
 
     // Add tileview event handler for visibility optimization
     lv_obj_add_event_cb(tileview, tileview_event_cb, LV_EVENT_VALUE_CHANGED, NULL);
