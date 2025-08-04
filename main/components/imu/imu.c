@@ -50,12 +50,12 @@ static const char *TAG = "IMU";
 // Exponential moving average filter applied to sensor data
 // Helps reduce high-frequency noise from sensors
 
-#define FILTER_ALPHA_GYRO 0.3f // Filter coefficient (0.0 - 1.0)
-                               // 0.0 = no new data (infinite filtering)
-                               // 1.0 = no filtering (pass-through)
-                               // Higher values = less filtering, more responsive
-                               // Lower values = more filtering, smoother but delayed
-                               // Recommended: 0.1-0.2 for most applications
+#define FILTER_ALPHA_GYRO 0.05f // Filter coefficient (0.0 - 1.0)
+                                // 0.0 = no new data (infinite filtering)
+                                // 1.0 = no filtering (pass-through)
+                                // Higher values = less filtering, more responsive
+                                // Lower values = more filtering, smoother but delayed
+                                // Recommended: 0.1-0.2 for most applications
 
 #define FILTER_ENABLE_ACCEL 1 // Enable accelerometer filtering (recommended)
 #define FILTER_ENABLE_GYRO 1  // Enable gyroscope filtering (recommended)
