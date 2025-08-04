@@ -33,71 +33,71 @@ static lv_obj_t *aircraft_selector_obj = NULL;
 static lv_obj_t *aircraft_header_obj = NULL;
 static lv_obj_t *tileview = NULL;
 
-/**
- * @brief Convert calibration status enum to readable string
- *
- * @param status Calibration status enum
- * @return const char* Human-readable status string
- */
-static const char *get_calibration_status_string(imu_calibration_status_t status)
-{
-    switch (status)
-    {
-    case IMU_CALIBRATION_NOT_STARTED:
-        return "NOT_STARTED";
-    case IMU_CALIBRATION_IN_PROGRESS:
-        return "IN_PROGRESS";
-    case IMU_CALIBRATION_COMPLETED:
-        return "COMPLETED";
-    default:
-        return "UNKNOWN";
-    }
-}
+// /**
+//  * @brief Convert calibration status enum to readable string
+//  *
+//  * @param status Calibration status enum
+//  * @return const char* Human-readable status string
+//  */
+// static const char *get_calibration_status_string(imu_calibration_status_t status)
+// {
+//     switch (status)
+//     {
+//     case IMU_CALIBRATION_NOT_STARTED:
+//         return "NOT_STARTED";
+//     case IMU_CALIBRATION_IN_PROGRESS:
+//         return "IN_PROGRESS";
+//     case IMU_CALIBRATION_COMPLETED:
+//         return "COMPLETED";
+//     default:
+//         return "UNKNOWN";
+//     }
+// }
 
-/**
- * @brief Log IMU data for debugging
- *
- * @param imu_data Pointer to IMU data structure
- */
-static void log_imu_data(const imu_data_t *imu_data)
-{
-    // Calculate G-load factor
-    float g_load = imu_calculate_g_load_factor(
-        imu_data->accel_x, imu_data->accel_y, imu_data->accel_z);
+// /**
+//  * @brief Log IMU data for debugging
+//  *
+//  * @param imu_data Pointer to IMU data structure
+//  */
+// static void log_imu_data(const imu_data_t *imu_data)
+// {
+//     // Calculate G-load factor
+//     float g_load = imu_calculate_g_load_factor(
+//         imu_data->accel_x, imu_data->accel_y, imu_data->accel_z);
 
-    // Calculate turn rate like aircraft turn indicator
-    float turn_rate = imu_calculate_turn_rate(
-        imu_data->gyro_x, imu_data->gyro_y, imu_data->gyro_z);
+//     // Calculate turn rate like aircraft turn indicator
+//     float turn_rate = imu_calculate_turn_rate(
+//         imu_data->gyro_x, imu_data->gyro_y, imu_data->gyro_z);
 
-    // Log calibration status and timestamp
-    ESP_LOGI(TAG, "=== IMU Data Report ===");
-    ESP_LOGI(TAG, "Calibration: %s | Timestamp: %lld us",
-             get_calibration_status_string(imu_data->calibration_status),
-             imu_data->timestamp);
+//     // Log calibration status and timestamp
+//     ESP_LOGI(TAG, "=== IMU Data Report ===");
+//     ESP_LOGI(TAG, "Calibration: %s | Timestamp: %lld us",
+//              get_calibration_status_string(imu_data->calibration_status),
+//              imu_data->timestamp);
 
-    // Log raw accelerometer data
-    ESP_LOGI(TAG, "Accelerometer (mg): X=%.3f, Y=%.3f, Z=%.3f",
-             imu_data->accel_x, imu_data->accel_y, imu_data->accel_z);
+//     // Log raw accelerometer data
+//     ESP_LOGI(TAG, "Accelerometer (mg): X=%.3f, Y=%.3f, Z=%.3f",
+//              imu_data->accel_x, imu_data->accel_y, imu_data->accel_z);
 
-    // Log raw gyroscope data
-    ESP_LOGI(TAG, "Gyroscope (deg/s): X=%.3f, Y=%.3f, Z=%.3f",
-             imu_data->gyro_x, imu_data->gyro_y, imu_data->gyro_z);
+//     // Log raw gyroscope data
+//     ESP_LOGI(TAG, "Gyroscope (deg/s): X=%.3f, Y=%.3f, Z=%.3f",
+//              imu_data->gyro_x, imu_data->gyro_y, imu_data->gyro_z);
 
-    // Log G-load factor
-    ESP_LOGI(TAG, "G-Load Factor: %.2f G", g_load);
+//     // Log G-load factor
+//     ESP_LOGI(TAG, "G-Load Factor: %.2f G", g_load);
 
-    // Log turn rate (aircraft turn indicator style)
-    ESP_LOGI(TAG, "Turn Rate: %.1f°/s %s",
-             fabsf(turn_rate),
-             turn_rate > 0.1f ? "(Right)" : turn_rate < -0.1f ? "(Left)"
-                                                              : "(Straight)");
-    if (fabsf(turn_rate) >= 2.5f && fabsf(turn_rate) <= 3.5f)
-    {
-        ESP_LOGI(TAG, "*** STANDARD RATE TURN ***");
-    }
+//     // Log turn rate (aircraft turn indicator style)
+//     ESP_LOGI(TAG, "Turn Rate: %.1f°/s %s",
+//              fabsf(turn_rate),
+//              turn_rate > 0.1f ? "(Right)" : turn_rate < -0.1f ? "(Left)"
+//                                                               : "(Straight)");
+//     if (fabsf(turn_rate) >= 2.5f && fabsf(turn_rate) <= 3.5f)
+//     {
+//         ESP_LOGI(TAG, "*** STANDARD RATE TURN ***");
+//     }
 
-    ESP_LOGI(TAG, "=======================");
-}
+//     ESP_LOGI(TAG, "=======================");
+// }
 
 // Getter function to access IMU queue from other modules
 QueueHandle_t get_imu_queue(void)
@@ -185,16 +185,16 @@ void app_main(void)
 
     // Initialize display with optimized buffer configuration
     // Reduce buffer size to save memory - use smaller partial buffer instead of full framebuffer
-    bsp_display_cfg_t disp_cfg = {
-        .double_buffer = true,        // Disable double buffering to save ~435KB memory
-        .buffer_size = 466 * 466 / 6, // Use partial rendering buffer (50 lines instead of full screen)
-        .lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG(),
-        .flags = {
-            .buff_dma = true,
-            .buff_spiram = true}};
+    // bsp_display_cfg_t disp_cfg = {
+    //     .double_buffer = true,        // Disable double buffering to save ~435KB memory
+    //     .buffer_size = 466 * 466 / 6, // Use partial rendering buffer (50 lines instead of full screen)
+    //     .lvgl_port_cfg = ESP_LVGL_PORT_INIT_CONFIG(),
+    //     .flags = {
+    //         .buff_dma = true,
+    //         .buff_spiram = true}};
 
-    lv_display_t *disp = bsp_display_start_with_config(&disp_cfg);
-    // lv_display_t *disp = bsp_display_start();
+    // lv_display_t *disp = bsp_display_start_with_config(&disp_cfg);
+    lv_display_t *disp = bsp_display_start();
 
     // Create and initialize dark theme
     lv_theme_t *theme = lv_theme_default_init(disp,
