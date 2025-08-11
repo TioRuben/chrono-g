@@ -28,8 +28,9 @@ static struct
     bool is_visible;
     lv_timer_t *update_timer;
     QueueHandle_t imu_queue;
-    lv_obj_t *aircraft_img; // Aircraft image object for rotation
-    uint8_t sample_counter; // Sample decimation counter (rotate every 3 samples)
+    lv_obj_t *aircraft_img;   // Aircraft image object for rotation
+    lv_obj_t *slip_skid_ball; // Aircraft image object for rotation
+    uint8_t sample_counter;   // Sample decimation counter (rotate every 3 samples)
 } turn_indicator_state = {
     .turn_rate = 0.0f,
     .gravity_angle = 0.0f,
@@ -41,17 +42,19 @@ static struct
     .update_timer = NULL,
     .imu_queue = NULL,
     .aircraft_img = NULL,
+    .slip_skid_ball = NULL,
     .sample_counter = 0};
 
 /**
  * @brief Calculate gravity vector angle between Z and Y axis
- * Returns angle in degrees where 0° means gravity vector is fully aligned with Z axis
+ * Returns signed angle in degrees where 0° means gravity vector is fully aligned with Z axis
+ * Positive angle means tilting towards Y axis, negative means tilting away from Y axis
  */
 static float calculate_gravity_vector_angle(float accel_y_mg, float accel_z_mg)
 {
-    // Calculate angle between gravity vector and Z axis using Y and Z components
-    // atan2(y, z) gives angle from Z axis towards Y axis
-    float angle_rad = atan2f(fabsf(accel_y_mg), fabsf(accel_z_mg));
+    // Calculate signed angle between gravity vector and Z axis using Y and Z components
+    // atan2(y, z) gives angle from Z axis towards Y axis with proper sign
+    float angle_rad = atan2f(accel_y_mg, fabsf(accel_z_mg));
     float angle_deg = angle_rad * 180.0f / M_PI;
 
     return angle_deg;
@@ -107,7 +110,7 @@ static void update_turn_indicator(lv_timer_t *timer)
             imu_data.accel_y, imu_data.accel_z);
 
         // Calculate 180° turn time
-        turn_indicator_state.turn_time_180 = calculate_180_turn_time(turn_indicator_state.turn_rate);
+        // turn_indicator_state.turn_time_180 = calculate_180_turn_time(turn_indicator_state.turn_rate);
 
         // Decimate the rotation updates - only rotate aircraft every 3 samples
         turn_indicator_state.sample_counter++;
@@ -144,6 +147,23 @@ static void update_turn_indicator(lv_timer_t *timer)
                 // Unlock display
                 bsp_display_unlock();
             }
+
+            if (turn_indicator_state.slip_skid_ball)
+            {
+                int32_t rotation = -(int16_t)(turn_indicator_state.gravity_angle * 10.0f);
+                if (rotation > 160)
+                {
+                    rotation = 160; // Cap at 15.0°
+                }
+                else if (rotation < -160)
+                {
+                    rotation = -160; // Cap at -15.0°
+                }
+                bsp_display_lock(0);
+                lv_obj_set_style_transform_rotation(turn_indicator_state.slip_skid_ball,
+                                                    rotation, LV_PART_MAIN);
+                bsp_display_unlock();
+            }
         }
     }
 }
@@ -178,9 +198,15 @@ lv_obj_t *turn_indicator_init(lv_obj_t *parent)
     lv_obj_set_size(turn_indicator_state.aircraft_img, LV_PCT(100), LV_PCT(100));
     lv_obj_align(turn_indicator_state.aircraft_img, LV_ALIGN_CENTER, 0, 0);
 
-    // Set pivot point to center for rotation
-    // Assuming the image is centered, pivot should be at image center
-    // This will be automatically calculated by LVGL as the default pivot is the center
+    turn_indicator_state.slip_skid_ball = lv_obj_create(parent);
+    lv_obj_set_size(turn_indicator_state.slip_skid_ball, 42, 42);
+    lv_obj_set_style_bg_color(turn_indicator_state.slip_skid_ball, lv_color_hex(0x222222), LV_PART_MAIN);
+    lv_obj_set_style_border_width(turn_indicator_state.slip_skid_ball, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(turn_indicator_state.slip_skid_ball, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_align(turn_indicator_state.slip_skid_ball, LV_ALIGN_BOTTOM_MID, 0, -37);
+    lv_obj_set_style_radius(turn_indicator_state.slip_skid_ball, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_y(turn_indicator_state.slip_skid_ball, -435, LV_PART_MAIN);
+    lv_obj_set_style_transform_pivot_x(turn_indicator_state.slip_skid_ball, 20, LV_PART_MAIN);
 
     // Create label at 100px from bottom with "1 min." text
     lv_obj_t *time_label = lv_label_create(parent);
