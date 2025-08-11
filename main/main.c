@@ -205,8 +205,6 @@ void app_main(void)
 
     lv_disp_set_theme(disp, theme);
     bsp_display_rotate(disp, LV_DISP_ROTATION_270);
-    bsp_display_lock(0);
-
     // Set screen background to pure black
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x000000), LV_PART_MAIN);
 
@@ -240,8 +238,6 @@ void app_main(void)
 
     // Create aircraft selection screen
     aircraft_selector_obj = aircraft_selector_init(lv_scr_act(), aircraft_selection_callback);
-
-    bsp_display_unlock();
 
     // Create IMU data queue (single element for latest data)
     imu_queue = xQueueCreate(1, sizeof(imu_data_t));

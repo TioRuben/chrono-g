@@ -13,6 +13,8 @@
   },
   "files.associations": {
     "touch.h": "c",
-    "iterator": "c"
+    "iterator": "c",
+    "task.h": "c",
+    "esp_log.h": "c"
   }
 }
