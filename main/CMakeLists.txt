@@ -1,4 +1,5 @@
 idf_component_register(SRCS "main.c"
+                                "display_port.c"
                                 "visibility_manager.c"
                                 "components/cyan_stopwatch/cyan_stopwatch.c"
                                 "components/yellow_stopwatch/yellow_stopwatch.c"
@@ -12,6 +13,7 @@ idf_component_register(SRCS "main.c"
                                 "turn_coord_img.c"
                                 "aircraft_turn_img.c"
                     INCLUDE_DIRS "."
+                                
                                 "components/cyan_stopwatch"
                                 "components/yellow_stopwatch"
                                 "components/g_meter"

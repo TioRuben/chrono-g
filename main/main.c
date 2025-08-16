@@ -13,6 +13,7 @@
 #include "bsp/esp-bsp.h"
 #include "bsp/display.h"
 #include "bsp/touch.h"
+#include "display_port.h"
 #include "cyan_stopwatch.h"
 #include "yellow_stopwatch.h"
 #include "g_meter.h"
@@ -193,8 +194,30 @@ void app_main(void)
     //         .buff_dma = true,
     //         .buff_spiram = true}};
 
-    // lv_display_t *disp = bsp_display_start_with_config(&disp_cfg);
-    lv_display_t *disp = bsp_display_start();
+    // Start display using local port (no managed component changes)
+    const lvgl_port_cfg_t port_cfg = {
+        .task_priority = 6,
+        .task_stack = 7168,
+        .task_affinity = 0,
+        .task_max_sleep_ms = 100,
+        .timer_period_ms = 2,
+    };
+    lv_display_t *disp = app_display_start(&port_cfg,
+                                           232,   // taller buffer height to reduce flush count
+                                           true,  // double buffer
+                                           80,    // QSPI pclk MHz (fallback to 40 if unstable)
+                                           true); // enable touch
+    if (!disp)
+    {
+        ESP_LOGE(TAG, "Display initialization failed. Halting UI setup.");
+        while (1)
+        {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+
+    // Create UI under LVGL lock to avoid race with LVGL task
+    lvgl_port_lock(0);
 
     // Create and initialize dark theme
     lv_theme_t *theme = lv_theme_default_init(disp,
@@ -238,6 +261,11 @@ void app_main(void)
 
     // Create aircraft selection screen
     aircraft_selector_obj = aircraft_selector_init(lv_scr_act(), aircraft_selection_callback);
+
+    lvgl_port_unlock();
+
+    // Make sure LVGL timers are enabled (defensive; display_port re-enables as well)
+    lv_timer_enable(true);
 
     // Create IMU data queue (single element for latest data)
     imu_queue = xQueueCreate(1, sizeof(imu_data_t));
