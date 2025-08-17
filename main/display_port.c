@@ -152,7 +152,7 @@ lv_display_t *app_display_start(const lvgl_port_cfg_t *port_cfg,
                 .buff_spiram = true,
                 .sw_rotate = 1,
                 .swap_bytes = 1,
-                .full_refresh = 0,
+                .full_refresh = 1,
                 .direct_mode = 0,
             },
         };
