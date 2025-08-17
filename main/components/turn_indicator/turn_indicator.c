@@ -11,7 +11,7 @@
 static const char *TAG = "TURN_INDICATOR";
 
 // Update rate: 60ms as requested
-#define UPDATE_INTERVAL_MS 60
+#define UPDATE_INTERVAL_MS 33
 
 LV_IMG_DECLARE(turn_coord_img);
 LV_IMG_DECLARE(aircraft_turn_img);

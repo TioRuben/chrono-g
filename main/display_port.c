@@ -137,7 +137,7 @@ lv_display_t *app_display_start(const lvgl_port_cfg_t *port_cfg,
             .panel_handle = panel_handle,
             .buffer_size = full_buffer_pixels,
             .double_buffer = true,
-            .trans_size = 24 * 1024, // SRAM bounce for PSRAM
+            .trans_size = 48 * 1024, // SRAM bounce for PSRAM
             .hres = BSP_LCD_H_RES,
             .vres = BSP_LCD_V_RES,
             .monochrome = false,
@@ -163,7 +163,7 @@ lv_display_t *app_display_start(const lvgl_port_cfg_t *port_cfg,
             // Lower pclk for PSRAM-backed full frames to reduce SPI pressure
             if (pclk_mhz > 40)
             {
-                io_config.pclk_hz = 40 * 1000 * 1000;
+                // io_config.pclk_hz = 40 * 1000 * 1000;
             }
             ESP_LOGI(TAG, "LVGL display ready: FULL, double buffer(s), PSRAM, DMA, direct_mode (pclk=%dMHz)", (int)(io_config.pclk_hz / 1000000));
             break;
