@@ -127,8 +127,54 @@ lv_display_t *app_display_start(const lvgl_port_cfg_t *port_cfg,
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
     ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
-    // Try multiple buffer configurations (auto-fallback) until LVGL accepts
+    // Try full-frame double buffering in PSRAM (direct mode) first to minimize tearing
     lv_display_t *disp = NULL;
+    do
+    {
+        const uint32_t full_buffer_pixels = BSP_LCD_H_RES * BSP_LCD_V_RES;
+        lvgl_port_display_cfg_t direct_cfg = {
+            .io_handle = io_handle,
+            .panel_handle = panel_handle,
+            .buffer_size = full_buffer_pixels,
+            .double_buffer = true,
+            .trans_size = 24 * 1024, // SRAM bounce for PSRAM
+            .hres = BSP_LCD_H_RES,
+            .vres = BSP_LCD_V_RES,
+            .monochrome = false,
+            .color_format = LV_COLOR_FORMAT_RGB565,
+            .rotation = {
+                .swap_xy = false,
+                .mirror_x = false,
+                .mirror_y = false,
+            },
+            .flags = {
+                .buff_dma = true,
+                .buff_spiram = true,
+                .sw_rotate = 1,
+                .swap_bytes = 1,
+                .full_refresh = 0,
+                .direct_mode = 0,
+            },
+        };
+
+        disp = lvgl_port_add_disp(&direct_cfg);
+        if (disp)
+        {
+            // Lower pclk for PSRAM-backed full frames to reduce SPI pressure
+            if (pclk_mhz > 40)
+            {
+                io_config.pclk_hz = 40 * 1000 * 1000;
+            }
+            ESP_LOGI(TAG, "LVGL display ready: FULL, double buffer(s), PSRAM, DMA, direct_mode (pclk=%dMHz)", (int)(io_config.pclk_hz / 1000000));
+            break;
+        }
+        else
+        {
+            ESP_LOGW(TAG, "LVGL full-screen double buffer in PSRAM failed, falling back to partial buffers");
+        }
+    } while (0);
+
+    // Try multiple buffer configurations (auto-fallback) until LVGL accepts
     const int heights_try[] = {buf_height, 232, 160, 128, 116, 96, 80, 64};
     const size_t heights_cnt = sizeof(heights_try) / sizeof(heights_try[0]);
 
@@ -171,9 +217,7 @@ lv_display_t *app_display_start(const lvgl_port_cfg_t *port_cfg,
                 .hres = BSP_LCD_H_RES,
                 .vres = BSP_LCD_V_RES,
                 .monochrome = false,
-#if LVGL_VERSION_MAJOR >= 9
                 .color_format = LV_COLOR_FORMAT_RGB565,
-#endif
                 .rotation = {
                     .swap_xy = false,
                     .mirror_x = false,
@@ -183,9 +227,7 @@ lv_display_t *app_display_start(const lvgl_port_cfg_t *port_cfg,
                     .buff_dma = use_dma,
                     .buff_spiram = use_spiram,
                     .sw_rotate = 1,
-#if LVGL_VERSION_MAJOR >= 9
                     .swap_bytes = 1,
-#endif
                     .full_refresh = 0,
                     .direct_mode = 0,
                 },

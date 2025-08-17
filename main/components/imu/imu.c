@@ -71,6 +71,8 @@ static const char *TAG = "IMU";
 #define IMU_STACK_SIZE 4096                // Stack size for IMU task in bytes
 #define CALIBRATION_TASK_PRIORITY_OFFSET 2 // Priority offset for calibration task (lower than IMU)
 #define CALIBRATION_STACK_SIZE 4096        // Stack size for calibration task in bytes
+// Core affinity: keep LVGL on CPU0 (set in main via lvgl_port), and pin IMU work to CPU1
+#define IMU_TASK_CORE 1
 
 // Gyro calibration parameters
 #define CALIBRATION_SAMPLES 2000      // Number of samples for gyro bias calibration
@@ -519,13 +521,14 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
     }
 
     // Create calibration processing task
-    BaseType_t cal_task_ret = xTaskCreate(
+    BaseType_t cal_task_ret = xTaskCreatePinnedToCore(
         calibration_task,
         "calibration_task",
         CALIBRATION_STACK_SIZE, // Stack size from define
         NULL,                   // Parameters
         tskIDLE_PRIORITY,       // Priority from define
-        &calibration_task_handle);
+        &calibration_task_handle,
+        IMU_TASK_CORE);
 
     if (cal_task_ret != pdPASS)
     {
@@ -537,13 +540,14 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
     ESP_LOGI(TAG, "Gyro calibration will start automatically");
 
     // Create IMU reading task
-    BaseType_t task_ret = xTaskCreate(
+    BaseType_t task_ret = xTaskCreatePinnedToCore(
         imu_task,
         "imu_task",
         IMU_STACK_SIZE, // Stack size from define
         NULL,           // Parameters
         4,              // Priority from define
-        &imu_task_handle);
+        &imu_task_handle,
+        IMU_TASK_CORE);
 
     if (task_ret != pdPASS)
     {
@@ -552,7 +556,7 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
     }
 
     imu_initialized = true;
-    ESP_LOGI(TAG, "IMU initialized successfully");
+    ESP_LOGI(TAG, "IMU initialized successfully (core %d)", IMU_TASK_CORE);
 
     return ESP_OK;
 }
