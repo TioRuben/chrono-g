@@ -14,6 +14,7 @@ static struct
     lv_obj_t *time_label;
     lv_obj_t *btn;
     lv_obj_t *reset_btn;
+    lv_obj_t *lap_btn;
     lv_obj_t *btn_container;
 } magenta_state = {0};
 
@@ -67,6 +68,11 @@ static void btn_event_cb(lv_event_t *e)
             {
                 lv_obj_add_flag(magenta_state.reset_btn, LV_OBJ_FLAG_HIDDEN);
             }
+            /* Enable LAP button while running */
+            if (magenta_state.lap_btn)
+            {
+                lv_obj_clear_state(magenta_state.lap_btn, LV_STATE_DISABLED);
+            }
         }
         else
         {
@@ -101,6 +107,11 @@ static void btn_event_cb(lv_event_t *e)
                     lv_obj_clear_flag(magenta_state.reset_btn, LV_OBJ_FLAG_HIDDEN);
                 }
             }
+            /* Disable LAP button when stopped */
+            if (magenta_state.lap_btn)
+            {
+                lv_obj_add_state(magenta_state.lap_btn, LV_STATE_DISABLED);
+            }
         }
     }
     else if (target == magenta_state.reset_btn)
@@ -115,6 +126,20 @@ static void btn_event_cb(lv_event_t *e)
         lv_obj_set_style_bg_color(magenta_state.btn, lv_color_hex(0x007700), LV_PART_MAIN);
         lv_obj_set_size(magenta_state.btn, lv_pct(100), lv_pct(100));
         lv_label_set_text(lv_obj_get_child(magenta_state.btn, 0), "START");
+        /* Ensure LAP is disabled after reset */
+        if (magenta_state.lap_btn)
+        {
+            lv_obj_add_state(magenta_state.lap_btn, LV_STATE_DISABLED);
+        }
+    }
+    else if (target == magenta_state.lap_btn)
+    {
+        // LAP button pressed
+        if (magenta_state.stopwatch_running && magenta_state.is_visible)
+        {
+            magenta_state.seconds_counted = 0;
+            lv_label_set_text(magenta_state.time_label, "00:00:00");
+        }
     }
 }
 
@@ -134,6 +159,27 @@ lv_obj_t *magenta_stopwatch_init(lv_obj_t *parent)
     lv_obj_set_style_text_color(magenta_state.time_label, lv_color_hex(0xFF00FF), 0); // Cyan color
     lv_label_set_text(magenta_state.time_label, "00:00:00");
     lv_obj_align(magenta_state.time_label, LV_ALIGN_CENTER, 0, 0);
+
+    /* Create full-width LAP button a few pixels above the time counter. Disabled by default. */
+    magenta_state.lap_btn = lv_btn_create(container);
+    /* Full width, small height so it doesn't hide other UI elements */
+    lv_obj_set_size(magenta_state.lap_btn, lv_pct(100), 60);
+    /* Place it slightly above the center (time label) */
+    lv_obj_align(magenta_state.lap_btn, LV_ALIGN_CENTER, 0, -100);
+    /* Orange background for LAP */
+    lv_obj_set_style_bg_color(magenta_state.lap_btn, lv_color_hex(0xFFA500), LV_PART_MAIN);
+    lv_obj_set_style_radius(magenta_state.lap_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(magenta_state.lap_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(magenta_state.lap_btn, 0, LV_PART_MAIN);
+    lv_obj_t *lap_label = lv_label_create(magenta_state.lap_btn);
+    lv_label_set_text(lap_label, "LAP");
+    lv_obj_set_style_text_font(lap_label, &lv_font_montserrat_24, 0);
+    /* Make label text black for contrast on orange */
+    lv_obj_set_style_text_color(lap_label, lv_color_hex(0x000000), 0);
+    lv_obj_center(lap_label);
+    lv_obj_add_event_cb(magenta_state.lap_btn, btn_event_cb, LV_EVENT_CLICKED, NULL);
+    /* Disabled until timer is running */
+    lv_obj_add_state(magenta_state.lap_btn, LV_STATE_DISABLED);
 
     // Create button container
     magenta_state.btn_container = lv_obj_create(container);
