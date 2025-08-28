@@ -123,7 +123,7 @@ static void update_turn_indicator(lv_timer_t *timer)
             {
                 // Convert turn rate to rotation angle
                 // 3°/s turn rate = 20° rotation, cap at ±40°
-                float rotation_angle = -turn_indicator_state.turn_rate * (20.0f / 6.0f);
+                float rotation_angle = -turn_indicator_state.turn_rate * (20.0f / 3.0f);
 
                 // Cap rotation to ±40°
                 if (rotation_angle > 40.0f)
@@ -150,7 +150,7 @@ static void update_turn_indicator(lv_timer_t *timer)
 
             if (turn_indicator_state.slip_skid_ball)
             {
-                int32_t rotation = -(int16_t)(turn_indicator_state.gravity_angle * 10.0f);
+                int32_t rotation = (int16_t)(turn_indicator_state.gravity_angle * 10.0f);
                 if (rotation > 160)
                 {
                     rotation = 160; // Cap at 15.0°
@@ -210,7 +210,7 @@ lv_obj_t *turn_indicator_init(lv_obj_t *parent)
 
     // Create label at 100px from bottom with "1 min." text
     lv_obj_t *time_label = lv_label_create(parent);
-    lv_label_set_text(time_label, "1 min.");
+    lv_label_set_text(time_label, "2 min.");
     lv_obj_set_style_text_color(time_label, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_font(time_label, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_align(time_label, LV_ALIGN_BOTTOM_MID, 0, -100);

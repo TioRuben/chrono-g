@@ -6,12 +6,14 @@
 /**
  * @brief Tile indices for the tileview
  */
-typedef enum {
+typedef enum
+{
     TILE_CYAN_STOPWATCH = 0,
     TILE_YELLOW_STOPWATCH = 1,
-    TILE_G_METER = 2,
-    TILE_TURN_INDICATOR = 3,
-    TILE_COUNT = 4
+    TILE_MAGENTA_STOPWATCH = 2,
+    TILE_G_METER = 3,
+    TILE_TURN_INDICATOR = 4,
+    TILE_COUNT = 5
 } tile_index_t;
 
 /**
@@ -21,7 +23,7 @@ void visibility_manager_init(void);
 
 /**
  * @brief Set the visibility state of a specific tile
- * 
+ *
  * @param tile_index The tile index to update
  * @param visible True if the tile is visible, false otherwise
  */
@@ -29,7 +31,7 @@ void visibility_manager_set_tile_visible(tile_index_t tile_index, bool visible);
 
 /**
  * @brief Check if a specific tile is currently visible
- * 
+ *
  * @param tile_index The tile index to check
  * @return true if the tile is visible, false otherwise
  */
@@ -37,7 +39,7 @@ bool visibility_manager_is_tile_visible(tile_index_t tile_index);
 
 /**
  * @brief Get the currently active tile index
- * 
+ *
  * @return tile_index_t The currently active tile
  */
 tile_index_t visibility_manager_get_active_tile(void);

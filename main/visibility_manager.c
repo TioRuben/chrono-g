@@ -50,7 +50,7 @@ void visibility_manager_set_tile_visible(tile_index_t tile_index, bool visible)
 
     if (previous_state != visible)
     {
-        const char *tile_names[] = {"Cyan Stopwatch", "Yellow Stopwatch", "G-meter", "Turn Indicator"};
+        const char *tile_names[] = {"Cyan Stopwatch", "Yellow Stopwatch", "Magenta Stopwatch", "G-meter", "Turn Indicator"};
         ESP_LOGI(TAG, "Tile '%s' visibility changed: %s",
                  tile_names[tile_index], visible ? "visible" : "hidden");
     }

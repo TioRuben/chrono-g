@@ -16,6 +16,7 @@
 #include "display_port.h"
 #include "cyan_stopwatch.h"
 #include "yellow_stopwatch.h"
+#include "magenta_stopwatch.h"
 #include "g_meter.h"
 #include "turn_indicator.h"
 #include "imu.h"
@@ -152,24 +153,35 @@ static void tileview_event_cb(lv_event_t *e)
     case TILE_CYAN_STOPWATCH:
         cyan_stopwatch_set_visible(true);
         yellow_stopwatch_set_visible(false);
+        magenta_stopwatch_set_visible(false);
         g_meter_set_visible(false);
         turn_indicator_set_visible(false);
         break;
     case TILE_YELLOW_STOPWATCH:
         cyan_stopwatch_set_visible(false);
         yellow_stopwatch_set_visible(true);
+        magenta_stopwatch_set_visible(false);
+        g_meter_set_visible(false);
+        turn_indicator_set_visible(false);
+        break;
+    case TILE_MAGENTA_STOPWATCH:
+        cyan_stopwatch_set_visible(false);
+        yellow_stopwatch_set_visible(false);
+        magenta_stopwatch_set_visible(true);
         g_meter_set_visible(false);
         turn_indicator_set_visible(false);
         break;
     case TILE_G_METER:
         cyan_stopwatch_set_visible(false);
         yellow_stopwatch_set_visible(false);
+        magenta_stopwatch_set_visible(false);
         g_meter_set_visible(true);
         turn_indicator_set_visible(false);
         break;
     case TILE_TURN_INDICATOR:
         cyan_stopwatch_set_visible(false);
         yellow_stopwatch_set_visible(false);
+        magenta_stopwatch_set_visible(false);
         g_meter_set_visible(false);
         turn_indicator_set_visible(true);
         break;
@@ -227,7 +239,7 @@ void app_main(void)
                                               LV_FONT_DEFAULT);       // Default font
 
     lv_disp_set_theme(disp, theme);
-    bsp_display_rotate(disp, LV_DISP_ROTATION_270);
+    // bsp_display_rotate(disp, LV_DISP_ROTATION_270);
     // Set screen background to pure black
     lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(0x000000), LV_PART_MAIN);
 
@@ -240,19 +252,22 @@ void app_main(void)
     // Create tiles for each component
     lv_obj_t *cyan_tile = lv_tileview_add_tile(tileview, 0, 0, LV_DIR_HOR);
     lv_obj_t *yellow_tile = lv_tileview_add_tile(tileview, 1, 0, LV_DIR_HOR);
-    lv_obj_t *g_meter_tile = lv_tileview_add_tile(tileview, 2, 0, LV_DIR_HOR);
-    lv_obj_t *turn_indicator_tile = lv_tileview_add_tile(tileview, 3, 0, LV_DIR_HOR);
+    lv_obj_t *magenta_tile = lv_tileview_add_tile(tileview, 2, 0, LV_DIR_HOR);
+    lv_obj_t *g_meter_tile = lv_tileview_add_tile(tileview, 3, 0, LV_DIR_HOR);
+    lv_obj_t *turn_indicator_tile = lv_tileview_add_tile(tileview, 4, 0, LV_DIR_HOR);
     lv_obj_set_style_anim(tileview, NULL, LV_PART_MAIN); // Disable animations for performance
 
     // Make tiles borderless
     lv_obj_set_style_border_width(cyan_tile, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(yellow_tile, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(magenta_tile, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(g_meter_tile, 0, LV_PART_MAIN);
     lv_obj_set_style_border_width(turn_indicator_tile, 0, LV_PART_MAIN);
 
     // Initialize components
     cyan_stopwatch_init(cyan_tile);
     yellow_stopwatch_init(yellow_tile);
+    magenta_stopwatch_init(magenta_tile);
     g_meter_init(g_meter_tile);
     turn_indicator_init(turn_indicator_tile);
 

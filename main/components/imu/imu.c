@@ -38,7 +38,7 @@ static const char *TAG = "IMU";
 // Exponential moving average filter applied to sensor data
 // Helps reduce high-frequency noise from sensors
 
-#define FILTER_ALPHA_ACCEL 0.15f // Filter coefficient (0.0 - 1.0)
+#define FILTER_ALPHA_ACCEL 0.10f // Filter coefficient (0.0 - 1.0)
                                  // 0.0 = no new data (infinite filtering)
                                  // 1.0 = no filtering (pass-through)
                                  // Higher values = less filtering, more responsive
@@ -50,12 +50,12 @@ static const char *TAG = "IMU";
 // Exponential moving average filter applied to sensor data
 // Helps reduce high-frequency noise from sensors
 
-#define FILTER_ALPHA_GYRO 0.05f // Filter coefficient (0.0 - 1.0)
-                                // 0.0 = no new data (infinite filtering)
-                                // 1.0 = no filtering (pass-through)
-                                // Higher values = less filtering, more responsive
-                                // Lower values = more filtering, smoother but delayed
-                                // Recommended: 0.1-0.2 for most applications
+#define FILTER_ALPHA_GYRO 0.025f // Filter coefficient (0.0 - 1.0)
+                                 // 0.0 = no new data (infinite filtering)
+                                 // 1.0 = no filtering (pass-through)
+                                 // Higher values = less filtering, more responsive
+                                 // Lower values = more filtering, smoother but delayed
+                                 // Recommended: 0.1-0.2 for most applications
 
 #define FILTER_ENABLE_ACCEL 1 // Enable accelerometer filtering (recommended)
 #define FILTER_ENABLE_GYRO 1  // Enable gyroscope filtering (recommended)
@@ -344,12 +344,12 @@ static void imu_task(void *pvParameters)
         raw_imu_data.timestamp = esp_timer_get_time();
 
         // Map axis to match the expected orientation
-        mapped_imu_data.accel_x = -raw_imu_data.accel_z;
-        mapped_imu_data.accel_y = raw_imu_data.accel_x;
-        mapped_imu_data.accel_z = raw_imu_data.accel_y;
-        mapped_imu_data.gyro_x = -raw_imu_data.gyro_z;
-        mapped_imu_data.gyro_y = raw_imu_data.gyro_x;
-        mapped_imu_data.gyro_z = raw_imu_data.gyro_y;
+        mapped_imu_data.accel_x = raw_imu_data.accel_z;
+        mapped_imu_data.accel_y = raw_imu_data.accel_y;
+        mapped_imu_data.accel_z = raw_imu_data.accel_x;
+        mapped_imu_data.gyro_x = raw_imu_data.gyro_z;
+        mapped_imu_data.gyro_y = raw_imu_data.gyro_y;
+        mapped_imu_data.gyro_z = raw_imu_data.gyro_x;
         mapped_imu_data.timestamp = raw_imu_data.timestamp;
 
         // Perform gyro calibration if not completed
@@ -545,7 +545,7 @@ esp_err_t imu_init(QueueHandle_t imu_queue)
         "imu_task",
         IMU_STACK_SIZE, // Stack size from define
         NULL,           // Parameters
-        4,              // Priority from define
+        8,              // Priority from define
         &imu_task_handle,
         IMU_TASK_CORE);
 
