@@ -8,15 +8,15 @@ This project creates an interactive round display interface with five main pages
 
 - **Cyan Stopwatch:** A digital stopwatch with a cyan theme
 - **Yellow Stopwatch:** A digital stopwatch with a yellow theme
-- **Magenta Stopwatch:** A digital stopwatch with a magenta theme
+- **Magenta Stopwatch:** A digital stopwatch with a magenta theme with LAP reset
 - **G-Meter:** Real-time signed G-force display with min/max tracking and color-coded warnings
-- **Turn Indicator:** Aircraft-style turn/rate indicator derived from IMU data
+- **Turn Indicator:** Aircraft-style turn/rate slip/skid indicator derived from IMU data
 
 ## Hardware
 
 - **Development Board:** Waveshare ESP32-S3-Touch-AMOLED-1.75
   - [Product Wiki](https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-1.75)
-  - 1.75" Round AMOLED Display (390×390 pixels)
+  - 1.75" Round AMOLED Display (466x466 pixels)
   - Capacitive Touch Screen
   - QMI8658 6-axis IMU (Accelerometer + Gyroscope)
 
@@ -38,7 +38,6 @@ This project uses the ESP-IDF framework with the following components from the E
 - **LVGL Graphics Library:** `lvgl/lvgl` (v9.3.0) - GUI framework for all display elements
 - **QMI8658 Driver:** `waveshare/qmi8658` (v1.0.1) - IMU sensor driver for accelerometer/gyroscope data
 - **Board Support Package:** `waveshare/esp32_s3_touch_amoled_1_75` (v1.0.1) - Display and touch drivers
-- **ESP-DSP Library:** Provides optimized Extended Kalman Filter implementation for sensor fusion
 
 ## Project Structure
 
