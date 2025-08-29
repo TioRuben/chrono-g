@@ -1,14 +1,16 @@
 # Chrono-G: ESP32-S3 AMOLED Round Display Project
 
-A multi-functional display project for the **Waveshare ESP32-S3-Touch-AMOLED-1.75** development board, featuring three horizontally swipeable pages with distinct functionalities.
+A multi-functional display project for the **Waveshare ESP32-S3-Touch-AMOLED-1.75** development board, featuring five horizontally swipeable pages with distinct functionality.
 
 ## Project Overview
 
-This project creates an interactive round display interface with three main pages:
+This project creates an interactive round display interface with five main pages:
 
 - **Cyan Stopwatch:** A digital stopwatch with a cyan theme
-- **Yellow Stopwatch:** A digital stopwatch with a yellow theme  
-- **Artificial Horizon:** A graphical artificial horizon using accelerometer data
+- **Yellow Stopwatch:** A digital stopwatch with a yellow theme
+- **Magenta Stopwatch:** A digital stopwatch with a magenta theme
+- **G-Meter:** Real-time signed G-force display with min/max tracking and color-coded warnings
+- **Turn Indicator:** Aircraft-style turn/rate indicator derived from IMU data
 
 ## Hardware
 
@@ -54,9 +56,24 @@ This project uses the ESP-IDF framework with the following components from the E
 │       ├── yellow_stopwatch/
 │       │   ├── yellow_stopwatch.c
 │       │   └── yellow_stopwatch.h
-│       └── artificial_horizon/
-│           ├── artificial_horizon.c
-│           └── artificial_horizon.h
+│       ├── magenta_stopwatch/
+│       │   ├── magenta_stopwatch.c
+│       │   └── magenta_stopwatch.h
+│       ├── g_meter/
+│       │   ├── g_meter.c
+│       │   └── g_meter.h
+│       ├── turn_indicator/
+│       │   ├── turn_indicator.c
+│       │   └── turn_indicator.h
+│       ├── imu/
+│       │   ├── imu.c
+│       │   └── imu.h
+│       ├── aircraft_selector/
+│       │   ├── aircraft_selector.c
+│       │   └── aircraft_selector.h
+│       └── aircraft_header/
+│           ├── aircraft_header.c
+│           └── aircraft_header.h
 ├── managed_components/
 ├── partitions.csv
 ├── sdkconfig.defaults
@@ -95,12 +112,10 @@ This project uses the ESP-IDF framework with the following components from the E
 
 ## Development Notes
 
-- **Modular Design:** Each display page is implemented as a separate component for maintainability
-- **Real-time Performance:** Optimized for smooth ~60fps display updates with 1° motion sensitivity
-- **Memory Efficiency:** Careful resource management with optimized includes and eliminated code duplication
-- **Code Quality:** Regular cleanup removing unused dependencies, duplicate definitions, and dead code
-- **ESP-DSP Integration:** Leverages ESP-IDF's optimized mathematical libraries for sensor fusion
-- **Error Handling:** Robust error handling for sensor readings, display operations, and memory management
+- The visibility manager (see `main/visibility_manager.h`) tracks which tile is active and notifies components so they can avoid unnecessary UI updates when hidden.
+- The IMU module (`main/components/imu`) handles gyro calibration and provides filtered accel/gyro samples to the G-Meter and Turn Indicator.
+- Stopwatches use independent timers and custom seven-segment fonts for display.
+- When adding new tile components, follow the existing pattern: provide a `<component>_set_visible(bool)` function and integrate it into `main.c` tile setup and the visibility manager.
 
 ## License
 

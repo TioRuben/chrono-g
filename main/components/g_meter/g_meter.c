@@ -13,7 +13,7 @@ static const char *TAG = "G_METER";
 
 // Aircraft G limits for color coding
 #define G_LIMIT_MIN -1.0f
-#define G_LIMIT_MAX 3.0f
+#define G_LIMIT_MAX 3.8f
 
 // Update rate: 8 FPS = 125ms (further reduced to prevent tearing)
 #define UPDATE_INTERVAL_MS 250
