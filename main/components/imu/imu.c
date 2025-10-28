@@ -425,7 +425,7 @@ esp_err_t imu_init(i2c_master_bus_handle_t bus_handle, QueueHandle_t imu_queue) 
         .lpf_mode = QMI8658_LPF_MODE_3,                // 13.37% of ODR for noise reduction
         .sample_rate_hz = 60,                          // 100 Hz output rate
         .calibrate_on_init = true,
-        .calibration_samples = 2000,
+        .calibration_samples = 5000,
     };
     
     return imu_init_with_config(bus_handle, imu_queue, &config);

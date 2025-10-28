@@ -32,6 +32,8 @@ static struct
     QueueHandle_t imu_queue;
     lv_obj_t *aircraft_img;   // Aircraft image object for rotation
     lv_obj_t *slip_skid_ball; // Aircraft image object for rotation
+    lv_obj_t *calib_btn;      // Calibration button
+    bool calibrating;         // Flag to track calibration state
     uint8_t sample_counter;   // Sample decimation counter (rotate every N samples)
     // Moving average (LPF) buffers for turn rate and gravity angle
     float turn_rate_buffer[DECIMATION_SAMPLES];
@@ -54,7 +56,101 @@ static struct
     .turn_rate_buffer = {0},
     .gravity_angle_buffer = {0},
     .buffer_index = 0,
-    .buffer_count = 0};
+    .buffer_count = 0,
+    .calib_btn = NULL,
+    .calibrating = false};
+
+/**
+ * @brief Timer callback to restore button state
+ */
+static void hide_calib_btn_cb(lv_timer_t *timer)
+{
+    // Re-enable turn indicator updates
+    turn_indicator_state.calibrating = false;
+    
+    // Hide the button
+    lv_obj_set_style_bg_opa(turn_indicator_state.calib_btn, LV_OPA_0, LV_PART_MAIN);
+    
+    // Clear any text
+    lv_obj_t *label = lv_obj_get_child(turn_indicator_state.calib_btn, 0);
+    if (label) {
+        lv_label_set_text(label, "");
+    }
+}
+
+/**
+ * @brief Calibration complete callback
+ */
+static void calibration_complete_cb(void *params)
+{
+    bool success = (bool)params;
+    lv_obj_t *label = lv_obj_get_child(turn_indicator_state.calib_btn, 0);
+    
+    if (success) {
+        if (label) {
+            lv_label_set_text(label, "Calibration Complete");
+            lv_obj_set_style_text_color(label, lv_color_hex(0x00FF00), 0);
+        }
+    } else {
+        if (label) {
+            lv_label_set_text(label, "Calibration Failed");
+            lv_obj_set_style_text_color(label, lv_color_hex(0xFF0000), 0);
+        }
+    }
+    
+    // Create timer to hide button after 2 seconds
+    lv_timer_t *hide_timer = lv_timer_create(hide_calib_btn_cb, 2000, NULL);
+    lv_timer_set_repeat_count(hide_timer, 1);
+}
+
+/**
+ * @brief Task to perform IMU calibration
+ */
+static void calibration_task(void *params)
+{
+    esp_err_t calib_ret = imu_calibrate_gyro(5000);
+    
+    // Schedule UI update in main thread via LVGL
+    lv_async_call(calibration_complete_cb, (void*)(calib_ret == ESP_OK));
+    
+    vTaskDelete(NULL);
+}
+
+/**
+ * @brief Calibration button event handler
+ */
+static void calib_btn_event_cb(lv_event_t *e)
+{
+    lv_event_code_t code = lv_event_get_code(e);
+
+    if (code == LV_EVENT_CLICKED && !turn_indicator_state.calibrating)
+    {
+        // Set calibrating state to pause turn indicator updates
+        turn_indicator_state.calibrating = true;
+
+        // Make button visible with calibration message
+        lv_obj_set_style_bg_opa(turn_indicator_state.calib_btn, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_t *label = lv_obj_get_child(turn_indicator_state.calib_btn, 0);
+        if (label) {
+            lv_label_set_text(label, "Keep aircraft still!\nCalibrating...");
+            lv_obj_set_style_text_color(label, lv_color_white(), 0);
+        }
+
+        // Start calibration in a separate task
+        BaseType_t ret = xTaskCreate(calibration_task, "imu_calib", 4096, NULL, 5, NULL);
+
+        if (ret != pdPASS) {
+            // If task creation fails, show error immediately
+            if (label) {
+                lv_label_set_text(label, "Calibration Failed");
+                lv_obj_set_style_text_color(label, lv_color_hex(0xFF0000), 0);
+            }
+            // Create timer to hide button after error
+            lv_timer_t *hide_timer = lv_timer_create(hide_calib_btn_cb, 2000, NULL);
+            lv_timer_set_repeat_count(hide_timer, 1);
+        }
+    }
+}
 
 /**
  * @brief Calculate gravity vector angle between Z and Y axis
@@ -72,28 +168,12 @@ static float calculate_gravity_vector_angle(float accel_y_mg, float accel_x_mg)
 }
 
 /**
- * @brief Calculate time required to complete a 180° turn at current turn rate
- * Returns time in seconds, or 0 if turn rate is too low
- */
-static float calculate_180_turn_time(float turn_rate_deg_per_sec)
-{
-    // If turn rate is too low (less than 0.1°/s), return 0 to indicate "infinity"
-    if (fabsf(turn_rate_deg_per_sec) < 0.1f)
-    {
-        return 0.0f;
-    }
-
-    // Calculate time = angle / rate = 180° / (deg/s) = seconds
-    return 180.0f / fabsf(turn_rate_deg_per_sec);
-}
-
-/**
  * @brief Update turn indicator display with latest IMU data
  */
 static void update_turn_indicator(lv_timer_t *timer)
 {
-    // Skip updates when not visible
-    if (!turn_indicator_state.is_visible)
+    // Skip updates when not visible or calibrating
+    if (!turn_indicator_state.is_visible || turn_indicator_state.calibrating)
     {
         return;
     }
@@ -239,6 +319,24 @@ lv_obj_t *turn_indicator_init(lv_obj_t *parent)
     lv_obj_set_style_text_font(time_label, &lv_font_montserrat_20, LV_PART_MAIN);
     lv_obj_align(time_label, LV_ALIGN_BOTTOM_MID, 0, -100);
 
+    // Create hidden calibration button in bottom quarter
+    turn_indicator_state.calib_btn = lv_btn_create(parent);
+    lv_obj_set_size(turn_indicator_state.calib_btn, LV_PCT(100), LV_PCT(25));
+    lv_obj_align(turn_indicator_state.calib_btn, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_opa(turn_indicator_state.calib_btn, LV_OPA_0, LV_PART_MAIN); // Start transparent
+    lv_obj_set_style_radius(turn_indicator_state.calib_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_border_width(turn_indicator_state.calib_btn, 0, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(turn_indicator_state.calib_btn, lv_color_hex(0x404040), LV_PART_MAIN);
+    lv_obj_add_event_cb(turn_indicator_state.calib_btn, calib_btn_event_cb, LV_EVENT_CLICKED, NULL);
+    
+    // Create label for the button
+    lv_obj_t *btn_label = lv_label_create(turn_indicator_state.calib_btn);
+    lv_obj_set_style_text_font(btn_label, &lv_font_montserrat_24, 0);
+    lv_obj_set_style_text_align(btn_label, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_color(btn_label, lv_color_white(), 0);
+    lv_label_set_text(btn_label, ""); // Start empty
+    lv_obj_center(btn_label);
+
     ESP_LOGI(TAG, "Drew initial turn indicator markings");
 
     // Create update timer (60ms interval as requested)
@@ -268,5 +366,17 @@ void turn_indicator_set_visible(bool visible)
         turn_indicator_state.last_displayed_gravity_angle = 999.0f;
         turn_indicator_state.last_displayed_turn_time_180 = 999.0f;
         turn_indicator_state.sample_counter = 0; // Reset sample counter
+    }
+    else
+    {
+        // Hide calibration button when component becomes invisible
+        lv_obj_set_style_bg_opa(turn_indicator_state.calib_btn, LV_OPA_0, LV_PART_MAIN);
+        // Clear any text
+        lv_obj_t *label = lv_obj_get_child(turn_indicator_state.calib_btn, 0);
+        if (label) {
+            lv_label_set_text(label, "");
+        }
+        // Reset calibration state
+        turn_indicator_state.calibrating = false;
     }
 }
