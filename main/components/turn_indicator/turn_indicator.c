@@ -12,6 +12,8 @@ static const char *TAG = "TURN_INDICATOR";
 
 // Update rate: 60ms as requested
 #define UPDATE_INTERVAL_MS 33
+// Number of samples to decimate and average (LPF)
+#define DECIMATION_SAMPLES 5
 
 LV_IMG_DECLARE(turn_coord_img);
 LV_IMG_DECLARE(aircraft_turn_img);
@@ -30,7 +32,12 @@ static struct
     QueueHandle_t imu_queue;
     lv_obj_t *aircraft_img;   // Aircraft image object for rotation
     lv_obj_t *slip_skid_ball; // Aircraft image object for rotation
-    uint8_t sample_counter;   // Sample decimation counter (rotate every 3 samples)
+    uint8_t sample_counter;   // Sample decimation counter (rotate every N samples)
+    // Moving average (LPF) buffers for turn rate and gravity angle
+    float turn_rate_buffer[DECIMATION_SAMPLES];
+    float gravity_angle_buffer[DECIMATION_SAMPLES];
+    uint8_t buffer_index;     // Circular index into buffers
+    uint8_t buffer_count;     // Number of valid samples in buffer (<= DECIMATION_SAMPLES)
 } turn_indicator_state = {
     .turn_rate = 0.0f,
     .gravity_angle = 0.0f,
@@ -43,18 +50,22 @@ static struct
     .imu_queue = NULL,
     .aircraft_img = NULL,
     .slip_skid_ball = NULL,
-    .sample_counter = 0};
+    .sample_counter = 0,
+    .turn_rate_buffer = {0},
+    .gravity_angle_buffer = {0},
+    .buffer_index = 0,
+    .buffer_count = 0};
 
 /**
  * @brief Calculate gravity vector angle between Z and Y axis
  * Returns signed angle in degrees where 0° means gravity vector is fully aligned with Z axis
  * Positive angle means tilting towards Y axis, negative means tilting away from Y axis
  */
-static float calculate_gravity_vector_angle(float accel_y_mg, float accel_z_mg)
+static float calculate_gravity_vector_angle(float accel_y_mg, float accel_x_mg)
 {
     // Calculate signed angle between gravity vector and Z axis using Y and Z components
     // atan2(y, z) gives angle from Z axis towards Y axis with proper sign
-    float angle_rad = atan2f(accel_y_mg, fabsf(accel_z_mg));
+    float angle_rad = atan2f(accel_y_mg, fabsf(accel_x_mg));
     float angle_deg = angle_rad * 180.0f / M_PI;
 
     return angle_deg;
@@ -101,29 +112,47 @@ static void update_turn_indicator(lv_timer_t *timer)
     imu_data_t imu_data;
     if (xQueueReceive(turn_indicator_state.imu_queue, &imu_data, 0) == pdTRUE)
     {
-        // Calculate turn rate (Z-axis gyroscope)
-        turn_indicator_state.turn_rate = imu_calculate_turn_rate(
-            imu_data.gyro_x, imu_data.gyro_y, imu_data.gyro_z);
+        // Raw sample values
+        float raw_turn_rate = imu_data.gyro_x;
+        float raw_gravity_angle = calculate_gravity_vector_angle(imu_data.accel_y, imu_data.accel_x);
 
-        // Calculate gravity vector angle
-        turn_indicator_state.gravity_angle = calculate_gravity_vector_angle(
-            imu_data.accel_y, imu_data.accel_z);
+        // Push into circular buffers for moving-average (LPF)
+        turn_indicator_state.turn_rate_buffer[turn_indicator_state.buffer_index] = raw_turn_rate;
+        turn_indicator_state.gravity_angle_buffer[turn_indicator_state.buffer_index] = raw_gravity_angle;
 
-        // Calculate 180° turn time
-        // turn_indicator_state.turn_time_180 = calculate_180_turn_time(turn_indicator_state.turn_rate);
+        // Advance buffer index and count
+        turn_indicator_state.buffer_index = (turn_indicator_state.buffer_index + 1) % DECIMATION_SAMPLES;
+        if (turn_indicator_state.buffer_count < DECIMATION_SAMPLES)
+        {
+            turn_indicator_state.buffer_count++;
+        }
 
-        // Decimate the rotation updates - only rotate aircraft every 3 samples
+        // Increase sample counter and only update display every DECIMATION_SAMPLES samples
         turn_indicator_state.sample_counter++;
-        if (turn_indicator_state.sample_counter >= 3)
+        if (turn_indicator_state.sample_counter >= DECIMATION_SAMPLES)
         {
             turn_indicator_state.sample_counter = 0;
 
-            // Update aircraft rotation based on turn rate
+            // Compute averages over available samples
+            float sum_turn = 0.0f;
+            float sum_gravity = 0.0f;
+            for (uint8_t i = 0; i < turn_indicator_state.buffer_count; i++)
+            {
+                sum_turn += turn_indicator_state.turn_rate_buffer[i];
+                sum_gravity += turn_indicator_state.gravity_angle_buffer[i];
+            }
+            float avg_turn_rate = sum_turn / (float)turn_indicator_state.buffer_count;
+            float avg_gravity_angle = sum_gravity / (float)turn_indicator_state.buffer_count;
+
+            // Store averaged values in state (for other uses / debugging)
+            turn_indicator_state.turn_rate = avg_turn_rate;
+            turn_indicator_state.gravity_angle = avg_gravity_angle;
+
+            // Update aircraft rotation based on averaged turn rate
             if (turn_indicator_state.aircraft_img)
             {
-                // Convert turn rate to rotation angle
-                // 3°/s turn rate = 20° rotation, cap at ±40°
-                float rotation_angle = -turn_indicator_state.turn_rate * (20.0f / 3.0f);
+                // 3°/s turn rate = 20° rotation mapping kept for consistency
+                float rotation_angle = -avg_turn_rate * (20.0f / 3.0f);
 
                 // Cap rotation to ±40°
                 if (rotation_angle > 40.0f)
@@ -135,29 +164,24 @@ static void update_turn_indicator(lv_timer_t *timer)
                     rotation_angle = -40.0f;
                 }
 
-                // Convert to tenths of degrees for LVGL (angle_x10)
                 int32_t rotation_angle_x10 = (int32_t)(rotation_angle * 10.0f);
 
-                // Lock display to prevent tearing during rotation update
                 bsp_display_lock(0);
-
-                // Apply rotation to aircraft image
                 lv_image_set_rotation(turn_indicator_state.aircraft_img, rotation_angle_x10);
-
-                // Unlock display
                 bsp_display_unlock();
             }
 
+            // Update slip/skid ball using averaged gravity angle
             if (turn_indicator_state.slip_skid_ball)
             {
-                int32_t rotation = (int16_t)(turn_indicator_state.gravity_angle * 10.0f);
+                int32_t rotation = (int16_t)(avg_gravity_angle * 10.0f) - 80;
                 if (rotation > 160)
                 {
-                    rotation = 160; // Cap at 15.0°
+                    rotation = 160; // Cap at 16.0 (10x) => ~16.0°
                 }
                 else if (rotation < -160)
                 {
-                    rotation = -160; // Cap at -15.0°
+                    rotation = -160;
                 }
                 bsp_display_lock(0);
                 lv_obj_set_style_transform_rotation(turn_indicator_state.slip_skid_ball,

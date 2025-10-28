@@ -290,8 +290,10 @@ void app_main(void)
         vTaskDelete(NULL);
     }
 
+    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
+
     // Initialize IMU module
-    esp_err_t ret = imu_init(imu_queue);
+    esp_err_t ret = imu_init(bus, imu_queue);
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to initialize IMU module (error: %d)", ret);
