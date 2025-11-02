@@ -254,7 +254,7 @@ static void update_turn_indicator(lv_timer_t *timer)
             // Update slip/skid ball using averaged gravity angle
             if (turn_indicator_state.slip_skid_ball)
             {
-                int32_t rotation = (int16_t)(avg_gravity_angle * 10.0f) - 80;
+                int32_t rotation = (int16_t)(avg_gravity_angle * 7.0f) - 70;
                 if (rotation > 160)
                 {
                     rotation = 160; // Cap at 16.0 (10x) => ~16.0°
