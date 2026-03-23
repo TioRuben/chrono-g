@@ -24,6 +24,7 @@ static struct
     float current_g;
     float min_g;
     float max_g;
+    float displayed_g;          // Smoothed displayed G value
     float last_displayed_g;     // Track last displayed value to prevent unnecessary updates
     float last_displayed_min_g; // Track last displayed min value
     float last_displayed_max_g; // Track last displayed max value
@@ -37,6 +38,7 @@ static struct
     .current_g = 1.0f,
     .min_g = 1.0f,
     .max_g = 1.0f,
+    .displayed_g = 1.0f,
     .last_displayed_g = 0.0f,     // Initialize to different value to force first update
     .last_displayed_min_g = 0.0f, // Initialize to different value to force first update
     .last_displayed_max_g = 0.0f, // Initialize to different value to force first update
@@ -112,17 +114,20 @@ static void update_g_meter(lv_timer_t *timer)
     }
 
     // Check if UI updates are needed (only update if significant change)
-    bool need_g_update = fabsf(g_meter_state.current_g - g_meter_state.last_displayed_g) >= 0.05f;
-    bool need_minmax_update = fabsf(g_meter_state.min_g - g_meter_state.last_displayed_min_g) >= 0.05f ||
-                              fabsf(g_meter_state.max_g - g_meter_state.last_displayed_max_g) >= 0.05f;
+    bool need_g_update = fabsf(g_meter_state.current_g - g_meter_state.last_displayed_g) >= 0.10f;
+    bool need_minmax_update = fabsf(g_meter_state.min_g - g_meter_state.last_displayed_min_g) >= 0.10f ||
+                              fabsf(g_meter_state.max_g - g_meter_state.last_displayed_max_g) >= 0.10f;
 
-    // Update main G value display
+    // Interpolate displayed value for smoother needle motion
     if (need_g_update)
     {
+        g_meter_state.displayed_g += (g_meter_state.current_g - g_meter_state.displayed_g) * 0.4f;
+
         char g_buf[16];
-        snprintf(g_buf, sizeof(g_buf), "%+.1fG", g_meter_state.current_g);
+        snprintf(g_buf, sizeof(g_buf), "%+.1fG", g_meter_state.displayed_g);
         lv_label_set_text(g_meter_state.g_value_label, g_buf);
-        lv_obj_set_style_text_color(g_meter_state.g_value_label, calculate_g_color(g_meter_state.current_g), 0);
+        lv_obj_set_style_text_color(g_meter_state.g_value_label, calculate_g_color(g_meter_state.displayed_g), 0);
+
         g_meter_state.last_displayed_g = g_meter_state.current_g;
     }
 
