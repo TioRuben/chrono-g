@@ -1,0 +1,15 @@
+menu "Aircraft Configuration"
+
+    config AIRCRAFT_FIRST_NAME
+        string "First Aircraft Name"
+        default "EC-XYZ7"
+        help
+            Name/registration for the first aircraft selection.
+
+    config AIRCRAFT_SECOND_NAME
+        string "Second Aircraft Name"
+        default "N7429B"
+        help
+            Name/registration for the second aircraft selection.
+
+endmenu

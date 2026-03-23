@@ -16,5 +16,8 @@
     "iterator": "c",
     "task.h": "c",
     "esp_log.h": "c"
-  }
+  },
+  "idf.currentSetup": "d:\\Ruben\\esp-idf\\v5.4\\esp-idf",
+  "snyk.advanced.organization": "087a2317-9322-4860-bc69-366f1c1e8f45",
+  "snyk.advanced.autoSelectOrganization": true
 }

@@ -1,8 +1,13 @@
 #include "aircraft_selector.h"
 #include "esp_log.h"
 #include <string.h>
+#include <sdkconfig.h>
 
 static const char *TAG = "AircraftSelector";
+
+// Aircraft names from configuration
+static const char *AIRCRAFT_FIRST = CONFIG_AIRCRAFT_FIRST_NAME;
+static const char *AIRCRAFT_SECOND = CONFIG_AIRCRAFT_SECOND_NAME;
 
 // Structure to hold selector data
 typedef struct
@@ -77,13 +82,13 @@ lv_obj_t *aircraft_selector_init(lv_obj_t *parent, aircraft_selection_cb_t selec
 
     // EC-HH4 button label
     lv_obj_t *ec_label = lv_label_create(ec_btn);
-    lv_label_set_text(ec_label, "EC-HH4");
+    lv_label_set_text(ec_label, AIRCRAFT_FIRST);
     lv_obj_set_style_text_font(ec_label, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(ec_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(ec_label);
 
     // Store aircraft ID in button user data
-    lv_obj_set_user_data(ec_btn, (void *)"EC-HH4");
+    lv_obj_set_user_data(ec_btn, (void *)AIRCRAFT_FIRST);
     lv_obj_add_event_cb(ec_btn, aircraft_btn_event_cb, LV_EVENT_CLICKED, data);
 
     // Create AMMH4 button (bottom half)
@@ -95,13 +100,13 @@ lv_obj_t *aircraft_selector_init(lv_obj_t *parent, aircraft_selection_cb_t selec
 
     // AMMH4 button label
     lv_obj_t *ammh4_label = lv_label_create(ammh4_btn);
-    lv_label_set_text(ammh4_label, "AMMH4");
+    lv_label_set_text(ammh4_label, AIRCRAFT_SECOND);
     lv_obj_set_style_text_font(ammh4_label, &lv_font_montserrat_48, 0);
     lv_obj_set_style_text_color(ammh4_label, lv_color_hex(0xFFFFFF), 0);
     lv_obj_center(ammh4_label);
 
     // Store aircraft ID in button user data
-    lv_obj_set_user_data(ammh4_btn, (void *)"AMMH4");
+    lv_obj_set_user_data(ammh4_btn, (void *)AIRCRAFT_SECOND);
     lv_obj_add_event_cb(ammh4_btn, aircraft_btn_event_cb, LV_EVENT_CLICKED, data);
 
     ESP_LOGI(TAG, "Aircraft selector initialized");
