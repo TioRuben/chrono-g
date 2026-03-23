@@ -16,7 +16,7 @@ static const char *TAG = "G_METER";
 #define G_LIMIT_MAX 3.8f
 
 // Update rate: 8 FPS = 125ms (further reduced to prevent tearing)
-#define UPDATE_INTERVAL_MS 250
+#define UPDATE_INTERVAL_MS 125
 
 // Component state
 static struct
@@ -101,14 +101,14 @@ static void update_g_meter(lv_timer_t *timer)
     imu_data_t imu_data;
     if (xQueueReceive(g_meter_state.imu_queue, &imu_data, 0) == pdTRUE)
     {
-        float g_force = imu_calculate_g_load_factor(imu_data.accel_x, imu_data.accel_y, imu_data.accel_z);
-        g_meter_state.current_g = g_force;
+        // float g_force = imu_calculate_g_load_factor(imu_data.accel_x, imu_data.accel_y, imu_data.accel_z);
+        g_meter_state.current_g = imu_data.accel_x;
 
         // Update min/max values
-        if (g_force < g_meter_state.min_g)
-            g_meter_state.min_g = g_force;
-        if (g_force > g_meter_state.max_g)
-            g_meter_state.max_g = g_force;
+        if (imu_data.accel_x < g_meter_state.min_g)
+            g_meter_state.min_g = imu_data.accel_x;
+        if (imu_data.accel_x > g_meter_state.max_g)
+            g_meter_state.max_g = imu_data.accel_x;
     }
 
     // Check if UI updates are needed (only update if significant change)
