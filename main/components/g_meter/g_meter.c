@@ -32,7 +32,6 @@ static struct
     lv_obj_t *g_value_label;
     lv_obj_t *minmax_label;
     lv_obj_t *reset_btn;
-    QueueHandle_t imu_queue;
 } g_meter_state = {
     .current_g = 1.0f,
     .min_g = 1.0f,
@@ -44,8 +43,7 @@ static struct
     .update_timer = NULL,
     .g_value_label = NULL,
     .minmax_label = NULL,
-    .reset_btn = NULL,
-    .imu_queue = NULL};
+    .reset_btn = NULL};
 
 /**
  * @brief Calculate color based on G-force value
@@ -75,6 +73,8 @@ static lv_color_t calculate_g_color(float g_value)
  */
 static void update_g_meter(lv_timer_t *timer)
 {
+    (void)timer;
+
     // Skip updates when not visible
     if (!g_meter_state.is_visible)
     {
@@ -87,28 +87,18 @@ static void update_g_meter(lv_timer_t *timer)
         return;
     }
 
-    // Get IMU queue if not available
-    if (!g_meter_state.imu_queue)
+    float current_g;
+    float min_g;
+    float max_g;
+    if (imu_get_g_extrema(&current_g, &min_g, &max_g) == ESP_OK)
     {
-        g_meter_state.imu_queue = get_imu_queue();
-        if (!g_meter_state.imu_queue)
-        {
-            return;
-        }
+        g_meter_state.current_g = current_g;
+        g_meter_state.min_g = min_g;
+        g_meter_state.max_g = max_g;
     }
-
-    // Process IMU data if available
-    imu_data_t imu_data;
-    if (xQueueReceive(g_meter_state.imu_queue, &imu_data, 0) == pdTRUE)
+    else
     {
-        // float g_force = imu_calculate_g_load_factor(imu_data.accel_x, imu_data.accel_y, imu_data.accel_z);
-        g_meter_state.current_g = imu_data.accel_x;
-
-        // Update min/max values
-        if (imu_data.accel_x < g_meter_state.min_g)
-            g_meter_state.min_g = imu_data.accel_x;
-        if (imu_data.accel_x > g_meter_state.max_g)
-            g_meter_state.max_g = imu_data.accel_x;
+        return;
     }
 
     // Check if UI updates are needed (only update if significant change)
@@ -148,9 +138,21 @@ static void reset_btn_event_cb(lv_event_t *e)
     {
         ESP_LOGI(TAG, "Reset button clicked - resetting min/max values");
 
-        // Reset min/max to current value
-        g_meter_state.min_g = g_meter_state.current_g;
-        g_meter_state.max_g = g_meter_state.current_g;
+        if (imu_reset_g_extrema() != ESP_OK)
+        {
+            ESP_LOGW(TAG, "IMU extrema reset unavailable yet");
+            return;
+        }
+
+        float current_g;
+        float min_g;
+        float max_g;
+        if (imu_get_g_extrema(&current_g, &min_g, &max_g) == ESP_OK)
+        {
+            g_meter_state.current_g = current_g;
+            g_meter_state.min_g = min_g;
+            g_meter_state.max_g = max_g;
+        }
 
         // Update display immediately if visible
         if (g_meter_state.is_visible && g_meter_state.minmax_label != NULL)
@@ -170,15 +172,6 @@ static void reset_btn_event_cb(lv_event_t *e)
 lv_obj_t *g_meter_init(lv_obj_t *parent)
 {
     ESP_LOGI(TAG, "Initializing G-meter component");
-
-    // Get IMU queue handle
-    g_meter_state.imu_queue = get_imu_queue();
-    ESP_LOGI(TAG, "IMU queue handle: %p", g_meter_state.imu_queue);
-    if (!g_meter_state.imu_queue)
-    {
-        ESP_LOGW(TAG, "IMU queue not available yet, will try to get it later");
-        // Don't return NULL, continue with UI creation
-    }
 
     // Create main container
     lv_obj_t *page = lv_obj_create(parent);
@@ -259,26 +252,7 @@ void g_meter_set_visible(bool visible)
             return;
         }
 
-        // Update all displays
-        char g_buf[16];
-        snprintf(g_buf, sizeof(g_buf), "%+.1fG", g_meter_state.current_g);
-        lv_label_set_text(g_meter_state.g_value_label, g_buf);
-
-        lv_color_t g_color = calculate_g_color(g_meter_state.current_g);
-        lv_obj_set_style_text_color(g_meter_state.g_value_label, g_color, 0);
-
-        // Update the last displayed values to current
-        g_meter_state.last_displayed_g = g_meter_state.current_g;
-        g_meter_state.last_displayed_min_g = g_meter_state.min_g;
-        g_meter_state.last_displayed_max_g = g_meter_state.max_g;
-
-        char minmax_buf[64];
-        snprintf(minmax_buf, sizeof(minmax_buf), "Min: %+.1f    Max: %+.1f", g_meter_state.min_g, g_meter_state.max_g);
-        lv_label_set_text(g_meter_state.minmax_label, minmax_buf);
-
-        // Force immediate refresh
-        lv_obj_invalidate(g_meter_state.g_value_label);
-        lv_obj_invalidate(g_meter_state.minmax_label);
+        update_g_meter(NULL);
     }
     else
     {

@@ -24,6 +24,21 @@ static bool gyro_calibrated = false;
 static imu_data_t ema_state = {0};
 static bool ema_initialized = false;
 
+// IMU-owned G-force extrema, updated regardless of active UI tile.
+static struct
+{
+    float current_g;
+    float min_g;
+    float max_g;
+    bool initialized;
+} g_extrema = {
+    .current_g = 1.0f,
+    .min_g = 1.0f,
+    .max_g = 1.0f,
+    .initialized = false,
+};
+static portMUX_TYPE g_extrema_lock = portMUX_INITIALIZER_UNLOCKED;
+
 // Internal function prototypes
 static esp_err_t qmi8658_read_reg(uint8_t reg_addr, uint8_t *data, size_t len);
 static esp_err_t qmi8658_write_reg(uint8_t reg_addr, uint8_t data);
@@ -35,6 +50,34 @@ static esp_err_t qmi8658_configure_filters(bool enable_accel_lpf, bool enable_gy
 static esp_err_t qmi8658_enable_sensors(bool accel, bool gyro);
 static esp_err_t qmi8658_calibrate_gyro_bias(uint16_t num_samples);
 static void imu_task(void *pvParameters);
+static void imu_update_g_extrema(float current_g);
+
+static void imu_update_g_extrema(float current_g)
+{
+    taskENTER_CRITICAL(&g_extrema_lock);
+
+    if (!g_extrema.initialized)
+    {
+        g_extrema.current_g = current_g;
+        g_extrema.min_g = current_g;
+        g_extrema.max_g = current_g;
+        g_extrema.initialized = true;
+    }
+    else
+    {
+        g_extrema.current_g = current_g;
+        if (current_g < g_extrema.min_g)
+        {
+            g_extrema.min_g = current_g;
+        }
+        if (current_g > g_extrema.max_g)
+        {
+            g_extrema.max_g = current_g;
+        }
+    }
+
+    taskEXIT_CRITICAL(&g_extrema_lock);
+}
 
 /**
  * @brief Read register(s) from QMI8658
@@ -433,6 +476,7 @@ esp_err_t imu_read_temperature(float *temperature)
 static void imu_task(void *pvParameters)
 {
     ESP_LOGI(TAG, "IMU task started");
+    (void)pvParameters;
 
     TickType_t last_wake_time = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(1000 / current_config.sample_rate_hz);
@@ -471,6 +515,9 @@ static void imu_task(void *pvParameters)
                 /* Overwrite the single-slot queue so the queue always contains the latest sample. */
                 xQueueOverwrite(imu_data_queue, &ema_state);
             }
+
+            // Keep G extrema updated in IMU so UI pages can be paused without losing min/max.
+            imu_update_g_extrema(ema_state.accel_x);
         }
         else
         {
@@ -545,6 +592,13 @@ esp_err_t imu_init_with_config(i2c_master_bus_handle_t bus_handle,
 
     ema_initialized = false;
     memset(&ema_state, 0, sizeof(ema_state));
+
+    taskENTER_CRITICAL(&g_extrema_lock);
+    g_extrema.current_g = 1.0f;
+    g_extrema.min_g = 1.0f;
+    g_extrema.max_g = 1.0f;
+    g_extrema.initialized = false;
+    taskEXIT_CRITICAL(&g_extrema_lock);
 
     imu_data_queue = imu_queue;
 
@@ -828,5 +882,54 @@ esp_err_t imu_self_test(imu_self_test_result_t *result)
     ESP_LOGI(TAG, "Self-test complete: Accel=%s, Gyro=%s",
              result->accel_pass ? "PASS" : "FAIL",
              result->gyro_pass ? "PASS" : "FAIL");
+    return ESP_OK;
+}
+
+esp_err_t imu_get_g_extrema(float *current_g, float *min_g, float *max_g)
+{
+    if (current_g == NULL && min_g == NULL && max_g == NULL)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    taskENTER_CRITICAL(&g_extrema_lock);
+
+    if (!g_extrema.initialized)
+    {
+        taskEXIT_CRITICAL(&g_extrema_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (current_g)
+    {
+        *current_g = g_extrema.current_g;
+    }
+    if (min_g)
+    {
+        *min_g = g_extrema.min_g;
+    }
+    if (max_g)
+    {
+        *max_g = g_extrema.max_g;
+    }
+
+    taskEXIT_CRITICAL(&g_extrema_lock);
+    return ESP_OK;
+}
+
+esp_err_t imu_reset_g_extrema(void)
+{
+    taskENTER_CRITICAL(&g_extrema_lock);
+
+    if (!g_extrema.initialized)
+    {
+        taskEXIT_CRITICAL(&g_extrema_lock);
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    g_extrema.min_g = g_extrema.current_g;
+    g_extrema.max_g = g_extrema.current_g;
+
+    taskEXIT_CRITICAL(&g_extrema_lock);
     return ESP_OK;
 }

@@ -8,7 +8,8 @@
 #include "qmi8658.h"
 
 // IMU Data Structures
-typedef struct {
+typedef struct
+{
     int16_t accel_x;
     int16_t accel_y;
     int16_t accel_z;
@@ -18,22 +19,25 @@ typedef struct {
     int64_t timestamp;
 } imu_raw_data_t;
 
-typedef struct {
+typedef struct
+{
     float accel_x; // in g
     float accel_y; // in g
     float accel_z; // in g
-    float gyro_x; // in dps
-    float gyro_y; // in dps
-    float gyro_z; // in dps
+    float gyro_x;  // in dps
+    float gyro_y;  // in dps
+    float gyro_z;  // in dps
     int64_t timestamp;
 } imu_data_t;
 
-typedef struct {
+typedef struct
+{
     bool accel_pass;
     bool gyro_pass;
 } imu_self_test_result_t;
 
-typedef struct {
+typedef struct
+{
     qmi8658_acc_range_t accel_range;
     qmi8658_gyr_range_t gyro_range;
     qmi8658_acc_odr_t accel_odr;
@@ -61,5 +65,17 @@ esp_err_t imu_calibrate_gyro(uint16_t num_samples);
 esp_err_t imu_get_gyro_bias(float *bias_x, float *bias_y, float *bias_z);
 esp_err_t imu_set_gyro_bias(float bias_x, float bias_y, float bias_z);
 esp_err_t imu_self_test(imu_self_test_result_t *result);
+
+/**
+ * @brief Get IMU-managed G-force extrema.
+ *
+ * Values are continuously updated by the IMU task, independent of UI visibility.
+ */
+esp_err_t imu_get_g_extrema(float *current_g, float *min_g, float *max_g);
+
+/**
+ * @brief Reset IMU-managed G-force extrema to current G.
+ */
+esp_err_t imu_reset_g_extrema(void);
 
 #endif // IMU_H
