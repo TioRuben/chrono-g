@@ -502,8 +502,8 @@ esp_err_t imu_init(i2c_master_bus_handle_t bus_handle, QueueHandle_t imu_queue)
         .enable_gyro_lpf = true,
         .lpf_mode = QMI8658_LPF_MODE_3, // 13.37% of ODR for noise reduction
         .sample_rate_hz = 60,           // 100 Hz output rate
-        .ema_alpha_accel = 0.02f,
-        .ema_alpha_gyro = 0.02f,
+        .ema_alpha_accel = 0.015f,
+        .ema_alpha_gyro = 0.01f,
         .calibrate_on_init = true,
         .calibration_samples = 5000,
     };
