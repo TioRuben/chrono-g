@@ -12,8 +12,6 @@ static const char *TAG = "TURN_INDICATOR";
 
 // Update rate: 60ms as requested
 #define UPDATE_INTERVAL_MS 33
-// Number of samples to decimate and average (LPF)
-#define DECIMATION_SAMPLES 5
 
 LV_IMG_DECLARE(turn_coord_img);
 LV_IMG_DECLARE(aircraft_turn_img);
@@ -34,12 +32,6 @@ static struct
     lv_obj_t *slip_skid_ball; // Aircraft image object for rotation
     lv_obj_t *calib_btn;      // Calibration button
     bool calibrating;         // Flag to track calibration state
-    uint8_t sample_counter;   // Sample decimation counter (rotate every N samples)
-    // Moving average (LPF) buffers for turn rate and gravity angle
-    float turn_rate_buffer[DECIMATION_SAMPLES];
-    float gravity_angle_buffer[DECIMATION_SAMPLES];
-    uint8_t buffer_index;     // Circular index into buffers
-    uint8_t buffer_count;     // Number of valid samples in buffer (<= DECIMATION_SAMPLES)
 } turn_indicator_state = {
     .turn_rate = 0.0f,
     .gravity_angle = 0.0f,
@@ -52,11 +44,6 @@ static struct
     .imu_queue = NULL,
     .aircraft_img = NULL,
     .slip_skid_ball = NULL,
-    .sample_counter = 0,
-    .turn_rate_buffer = {0},
-    .gravity_angle_buffer = {0},
-    .buffer_index = 0,
-    .buffer_count = 0,
     .calib_btn = NULL,
     .calibrating = false};
 
@@ -67,13 +54,14 @@ static void hide_calib_btn_cb(lv_timer_t *timer)
 {
     // Re-enable turn indicator updates
     turn_indicator_state.calibrating = false;
-    
+
     // Hide the button
     lv_obj_set_style_bg_opa(turn_indicator_state.calib_btn, LV_OPA_0, LV_PART_MAIN);
-    
+
     // Clear any text
     lv_obj_t *label = lv_obj_get_child(turn_indicator_state.calib_btn, 0);
-    if (label) {
+    if (label)
+    {
         lv_label_set_text(label, "");
     }
 }
@@ -85,19 +73,24 @@ static void calibration_complete_cb(void *params)
 {
     bool success = (bool)params;
     lv_obj_t *label = lv_obj_get_child(turn_indicator_state.calib_btn, 0);
-    
-    if (success) {
-        if (label) {
+
+    if (success)
+    {
+        if (label)
+        {
             lv_label_set_text(label, "Calibration Complete");
             lv_obj_set_style_text_color(label, lv_color_hex(0x00FF00), 0);
         }
-    } else {
-        if (label) {
+    }
+    else
+    {
+        if (label)
+        {
             lv_label_set_text(label, "Calibration Failed");
             lv_obj_set_style_text_color(label, lv_color_hex(0xFF0000), 0);
         }
     }
-    
+
     // Create timer to hide button after 2 seconds
     lv_timer_t *hide_timer = lv_timer_create(hide_calib_btn_cb, 2000, NULL);
     lv_timer_set_repeat_count(hide_timer, 1);
@@ -109,10 +102,10 @@ static void calibration_complete_cb(void *params)
 static void calibration_task(void *params)
 {
     esp_err_t calib_ret = imu_calibrate_gyro(5000);
-    
+
     // Schedule UI update in main thread via LVGL
-    lv_async_call(calibration_complete_cb, (void*)(calib_ret == ESP_OK));
-    
+    lv_async_call(calibration_complete_cb, (void *)(calib_ret == ESP_OK));
+
     vTaskDelete(NULL);
 }
 
@@ -131,7 +124,8 @@ static void calib_btn_event_cb(lv_event_t *e)
         // Make button visible with calibration message
         lv_obj_set_style_bg_opa(turn_indicator_state.calib_btn, LV_OPA_COVER, LV_PART_MAIN);
         lv_obj_t *label = lv_obj_get_child(turn_indicator_state.calib_btn, 0);
-        if (label) {
+        if (label)
+        {
             lv_label_set_text(label, "Keep aircraft still!\nCalibrating...");
             lv_obj_set_style_text_color(label, lv_color_white(), 0);
         }
@@ -139,9 +133,11 @@ static void calib_btn_event_cb(lv_event_t *e)
         // Start calibration in a separate task
         BaseType_t ret = xTaskCreate(calibration_task, "imu_calib", 4096, NULL, 5, NULL);
 
-        if (ret != pdPASS) {
+        if (ret != pdPASS)
+        {
             // If task creation fails, show error immediately
-            if (label) {
+            if (label)
+            {
                 lv_label_set_text(label, "Calibration Failed");
                 lv_obj_set_style_text_color(label, lv_color_hex(0xFF0000), 0);
             }
@@ -192,82 +188,46 @@ static void update_turn_indicator(lv_timer_t *timer)
     imu_data_t imu_data;
     if (xQueueReceive(turn_indicator_state.imu_queue, &imu_data, 0) == pdTRUE)
     {
-        // Raw sample values
-        float raw_turn_rate = imu_data.gyro_x;
-        float raw_gravity_angle = calculate_gravity_vector_angle(imu_data.accel_y, imu_data.accel_x);
+        turn_indicator_state.turn_rate = imu_data.gyro_x;
+        turn_indicator_state.gravity_angle = calculate_gravity_vector_angle(imu_data.accel_y, imu_data.accel_x);
 
-        // Push into circular buffers for moving-average (LPF)
-        turn_indicator_state.turn_rate_buffer[turn_indicator_state.buffer_index] = raw_turn_rate;
-        turn_indicator_state.gravity_angle_buffer[turn_indicator_state.buffer_index] = raw_gravity_angle;
-
-        // Advance buffer index and count
-        turn_indicator_state.buffer_index = (turn_indicator_state.buffer_index + 1) % DECIMATION_SAMPLES;
-        if (turn_indicator_state.buffer_count < DECIMATION_SAMPLES)
+        if (turn_indicator_state.aircraft_img)
         {
-            turn_indicator_state.buffer_count++;
+            // 3°/s turn rate = 20° rotation mapping kept for consistency
+            float rotation_angle = -turn_indicator_state.turn_rate * (20.0f / 3.0f);
+
+            // Cap rotation to ±40°
+            if (rotation_angle > 40.0f)
+            {
+                rotation_angle = 40.0f;
+            }
+            else if (rotation_angle < -40.0f)
+            {
+                rotation_angle = -40.0f;
+            }
+
+            int32_t rotation_angle_x10 = (int32_t)(rotation_angle * 10.0f);
+
+            bsp_display_lock(0);
+            lv_image_set_rotation(turn_indicator_state.aircraft_img, rotation_angle_x10);
+            bsp_display_unlock();
         }
 
-        // Increase sample counter and only update display every DECIMATION_SAMPLES samples
-        turn_indicator_state.sample_counter++;
-        if (turn_indicator_state.sample_counter >= DECIMATION_SAMPLES)
+        if (turn_indicator_state.slip_skid_ball)
         {
-            turn_indicator_state.sample_counter = 0;
-
-            // Compute averages over available samples
-            float sum_turn = 0.0f;
-            float sum_gravity = 0.0f;
-            for (uint8_t i = 0; i < turn_indicator_state.buffer_count; i++)
+            int32_t rotation = (int16_t)(turn_indicator_state.gravity_angle * 7.0f) - 70;
+            if (rotation > 160)
             {
-                sum_turn += turn_indicator_state.turn_rate_buffer[i];
-                sum_gravity += turn_indicator_state.gravity_angle_buffer[i];
+                rotation = 160; // Cap at 16.0 (10x) => ~16.0°
             }
-            float avg_turn_rate = sum_turn / (float)turn_indicator_state.buffer_count;
-            float avg_gravity_angle = sum_gravity / (float)turn_indicator_state.buffer_count;
-
-            // Store averaged values in state (for other uses / debugging)
-            turn_indicator_state.turn_rate = avg_turn_rate;
-            turn_indicator_state.gravity_angle = avg_gravity_angle;
-
-            // Update aircraft rotation based on averaged turn rate
-            if (turn_indicator_state.aircraft_img)
+            else if (rotation < -160)
             {
-                // 3°/s turn rate = 20° rotation mapping kept for consistency
-                float rotation_angle = -avg_turn_rate * (20.0f / 3.0f);
-
-                // Cap rotation to ±40°
-                if (rotation_angle > 40.0f)
-                {
-                    rotation_angle = 40.0f;
-                }
-                else if (rotation_angle < -40.0f)
-                {
-                    rotation_angle = -40.0f;
-                }
-
-                int32_t rotation_angle_x10 = (int32_t)(rotation_angle * 10.0f);
-
-                bsp_display_lock(0);
-                lv_image_set_rotation(turn_indicator_state.aircraft_img, rotation_angle_x10);
-                bsp_display_unlock();
+                rotation = -160;
             }
-
-            // Update slip/skid ball using averaged gravity angle
-            if (turn_indicator_state.slip_skid_ball)
-            {
-                int32_t rotation = (int16_t)(avg_gravity_angle * 7.0f) - 70;
-                if (rotation > 160)
-                {
-                    rotation = 160; // Cap at 16.0 (10x) => ~16.0°
-                }
-                else if (rotation < -160)
-                {
-                    rotation = -160;
-                }
-                bsp_display_lock(0);
-                lv_obj_set_style_transform_rotation(turn_indicator_state.slip_skid_ball,
-                                                    rotation, LV_PART_MAIN);
-                bsp_display_unlock();
-            }
+            bsp_display_lock(0);
+            lv_obj_set_style_transform_rotation(turn_indicator_state.slip_skid_ball,
+                                                rotation, LV_PART_MAIN);
+            bsp_display_unlock();
         }
     }
 }
@@ -328,7 +288,7 @@ lv_obj_t *turn_indicator_init(lv_obj_t *parent)
     lv_obj_set_style_border_width(turn_indicator_state.calib_btn, 0, LV_PART_MAIN);
     lv_obj_set_style_bg_color(turn_indicator_state.calib_btn, lv_color_hex(0x404040), LV_PART_MAIN);
     lv_obj_add_event_cb(turn_indicator_state.calib_btn, calib_btn_event_cb, LV_EVENT_CLICKED, NULL);
-    
+
     // Create label for the button
     lv_obj_t *btn_label = lv_label_create(turn_indicator_state.calib_btn);
     lv_obj_set_style_text_font(btn_label, &lv_font_montserrat_24, 0);
@@ -365,7 +325,6 @@ void turn_indicator_set_visible(bool visible)
         turn_indicator_state.last_displayed_turn_rate = 999.0f;
         turn_indicator_state.last_displayed_gravity_angle = 999.0f;
         turn_indicator_state.last_displayed_turn_time_180 = 999.0f;
-        turn_indicator_state.sample_counter = 0; // Reset sample counter
     }
     else
     {
@@ -373,7 +332,8 @@ void turn_indicator_set_visible(bool visible)
         lv_obj_set_style_bg_opa(turn_indicator_state.calib_btn, LV_OPA_0, LV_PART_MAIN);
         // Clear any text
         lv_obj_t *label = lv_obj_get_child(turn_indicator_state.calib_btn, 0);
-        if (label) {
+        if (label)
+        {
             lv_label_set_text(label, "");
         }
         // Reset calibration state

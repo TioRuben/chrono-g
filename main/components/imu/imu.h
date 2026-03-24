@@ -42,6 +42,8 @@ typedef struct {
     bool enable_gyro_lpf;
     qmi8658_lpf_mode_t lpf_mode;
     uint16_t sample_rate_hz;
+    float ema_alpha_accel;
+    float ema_alpha_gyro;
     bool calibrate_on_init;
     uint16_t calibration_samples;
     float accel_sensitivity;
